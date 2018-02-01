@@ -1,0 +1,4 @@
+se tiver construtor com parâmetros, tem que setar: @JsonCreator nele
+usar JsonProperties nos parâmetros do construtor
+@JsonIgnore em todas as funções da classe, para exportar somente os dados contidos nas variáveis, porque quando existem um getAlgumNomeVariavel, essa função é chamada
+passar somente um parâmetro pro resource, e depois 'recuperar' os dados do map

@@ -24,6 +24,8 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
@@ -85,16 +87,58 @@ public class Particionador extends AbstractHandler {
 			}
 			
 			// duplica projeto para nÃ£o perder dados do outro
+			System.out.println("Duplicando projeto. Aguarde.");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
 			IProject restfulProject = createRestfulProject(projects[choosenProject]);
+			System.out.println("Projeto duplicado!");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
 			
 			// abre objeto do projeto Java para poder modificar
 			IJavaProject javaProject = JavaCore.create(restfulProject);
 			
+			System.out.println("Inicializando variáveis. Aguarde.");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
 			// inicia as variáveis globais
 			initializeGlobalVariable(javaProject);
+			System.out.println("Variáveis inicializadas!");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
 			
+			System.out.println("Processando classes que não extendem classe e não implementam interface!");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
 			// processa as classes que não contém extendem de nenhuma classe ou não implementam nenhum interface
 			processSimpleType(javaProject);
+			System.out.println("Processamento finalizado!");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
 			
 		}
 		catch(CoreException e){
@@ -142,13 +186,62 @@ public class Particionador extends AbstractHandler {
 			}
 		}
 	}
-
+	
+	/**
+	 * Itera sobre todas as classes de um pacote, e verifica se pertencem a um dos seguintes grupos:
+	 * 1) classes que não extendem outra classe e não implementam nenhuma interface
+	 * 2) classes que não extendem outra classe, mas implementam interface
+	 * 3) classes que extendem outra classe, mas não implementam nenhuma interface
+	 * 4) classes que entendem outra classe e implementam interface
+	 * 5) interfaces que não extendem outras interfaces
+	 * 6) interfaces que extendem outras interfaces 
+	 * @param mypackage
+	 * @throws JavaModelException
+	 */
 	private void enterJavaFiles(IPackageFragment mypackage) throws JavaModelException {
 
 		for (ICompilationUnit unit : mypackage.getCompilationUnits()) {
 			// enter into all classes
 			for (IType type : unit.getAllTypes()) {
-				
+				Boolean extendsClass = type.getSuperclassName() == null? false:true;
+				Boolean implementsInterface = type.getSuperInterfaceNames().length == 0? false:true;
+				// se for classe 
+				if(type.isClass()){
+					// se extender classe
+					if(extendsClass){
+						// se implementa interface
+						if(implementsInterface){
+							javaChildrenClassesInterfaces.add(type);
+						}
+						// se não implementa interfaces
+						else{
+							javaChildrenClasses.add(type);
+						}
+					}
+					// se não extende classe
+					else{
+						// se implementa interface
+						if(implementsInterface){
+							javaClassesInterfaces.add(type);
+						}
+						// se não implementa interfaces
+						else{
+							javaClasses.add(type);
+						}
+					}
+				}
+				else{
+					if(type.isInterface()){
+						// se implementa interface
+						if(implementsInterface){
+							javaChildrenInterfaces.add(type);
+						}
+						// se não implementa interfaces
+						else{
+							javaInterfaces.add(type);
+						}
+					}
+				}
 			}
 		}
 	}
@@ -156,7 +249,7 @@ public class Particionador extends AbstractHandler {
 	/**
 	 * Cria um projeto cópia, para serem realizadas as alterações, sem perder os dados do projeto original
 	 * @param project
-	 * @return Um novo projeto para ser utilizado como base para as modificações
+	 * @return IProject
 	 * @throws CoreException
 	 */
 	private IProject createRestfulProject(IProject project) throws CoreException {
@@ -241,25 +334,112 @@ public class Particionador extends AbstractHandler {
 	 * Itera sobre todas as classes pertencentes ao projeto, adicionando anotações quando necessário
 	 * e criando o resource para a classe  
 	 * @param project
+	 * @throws JavaModelException 
 	 */
-	private void processSimpleType(IJavaProject project){
+	private void processSimpleType(IJavaProject project) throws JavaModelException{
+		printGlobalVariableData();
+	}
+
+	/**
+	 * Imprime dados relativos às variáveis globais que foram criadas durante o desenvolvimento, para debug
+	 * @throws JavaModelException
+	 */
+	private void printGlobalVariableData() throws JavaModelException {
+		System.out.println("Quantidade de classes: "+(javaClasses.size()+javaChildrenClasses.size()+
+				javaChildrenClassesInterfaces.size()+javaClassesInterfaces.size()));
 		
+		System.out.println(".");
+		System.out.println("..");
+		System.out.println("...");
+		System.out.println("....");
+		System.out.println(".....");
+		System.out.println("......");
+		System.out.println("Classes que não extendem classe e não implementam interfaces: "+javaClasses.size());
+		for(IType type : javaClasses){
+			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);;
+		}
 		
+		System.out.println(".");
+		System.out.println("..");
+		System.out.println("...");
+		System.out.println("....");
+		System.out.println(".....");
+		System.out.println("......");
+		System.out.println("Classes que extendem classe e não implementam interfaces: "+javaChildrenClasses.size());
+		for(IType type : javaChildrenClasses){
+			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
+		}
 		
+		System.out.println(".");
+		System.out.println("..");
+		System.out.println("...");
+		System.out.println("....");
+		System.out.println(".....");
+		System.out.println("......");
+		System.out.println("Classes que não extendem classe e implementam interfaces: "+javaClassesInterfaces.size());
+		for(IType type : javaClassesInterfaces){
+			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
+		}
+		
+		System.out.println(".");
+		System.out.println("..");
+		System.out.println("...");
+		System.out.println("....");
+		System.out.println(".....");
+		System.out.println("......");
+		System.out.println("Classes que extendem classe e não implementam interfaces: "+javaChildrenClassesInterfaces.size());
+		for(IType type : javaChildrenClassesInterfaces){
+			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
+		}
 	}
 	
 	/**
-	 * Atualiza a classe, verificando se existem construtores com parâmetro, para adicionar a anotação @JsonCreator
+	 * Atualiza a classe simples. Setar: @JsonCreator nos construtores, @JsonProperties nos parâmetros do construtor
+	 * e @JsonIgnore nas funções
 	 * @param type
 	 */
 	private void updateSimpleType(TypeDeclaration type){
+		// Atualiza os construtores com parâmetros, adicionando as anotações necessárias
+		updateConstructor(type);
 		
 	}
 	
 	/**
+	 * Atualiza construtores
+	 * @param type
+	 */
+	private void updateConstructor(TypeDeclaration type) {
+		// retorna métodos construtores
+		List<MethodDeclaration> constructors = findConstructorMethods(type); 
+		
+		for(MethodDeclaration constructor : constructors){
+			// adiciona anotação @JsonIgnore e @JsonProperties caso seja construtor com parâmetros
+			List<SingleVariableDeclaration> parameters = constructor.parameters();
+			if(!parameters.isEmpty()){
+				// adiciona @JsonIgnore
+				
+			}
+		}
+	}
+
+	/**
+	 * Itera pelas funções da classe e recupera aquelas que são construtoras
+	 * @param type 
+	 * @return List<MethodDeclaration>
+	 */
+	private List<MethodDeclaration> findConstructorMethods(TypeDeclaration type) {
+		List<MethodDeclaration> constructors = new ArrayList<MethodDeclaration>();
+		for(MethodDeclaration method : type.getMethods()){
+			if(method.isConstructor()){
+				constructors.add(method);
+			}
+		}
+		return constructors;
+	}
+
+	/**
 	 * Realiza a geração dos resources das classes que não extendem e nem implementam nenhuma classe ou interface 
 	 * @param type
-	 * @return
 	 */
 	private void generateResourceSimpleType(TypeDeclaration type){
 		// 
