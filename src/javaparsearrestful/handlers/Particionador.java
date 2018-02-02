@@ -23,8 +23,12 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.AnnotatableType;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.Modifier;
+import org.eclipse.jdt.core.dom.NormalAnnotation;
+import org.eclipse.jdt.core.dom.SingleMemberAnnotation;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jface.text.BadLocationException;
@@ -141,7 +145,7 @@ public class Particionador extends AbstractHandler {
 			System.out.println("......");
 			
 		}
-		catch(CoreException e){
+		catch(CoreException | MalformedTreeException | BadLocationException e){
 			e.printStackTrace();
 		}
 		
@@ -335,9 +339,23 @@ public class Particionador extends AbstractHandler {
 	 * e criando o resource para a classe  
 	 * @param project
 	 * @throws JavaModelException 
+	 * @throws BadLocationException 
+	 * @throws MalformedTreeException 
 	 */
-	private void processSimpleType(IJavaProject project) throws JavaModelException{
-		printGlobalVariableData();
+	private void processSimpleType(IJavaProject project) throws JavaModelException, MalformedTreeException, BadLocationException{
+//		printGlobalVariableData();
+		for(IType type : javaClasses){
+			Document javaDocument = getDocumentCompilationUnit(type);
+			CompilationUnit cuClazz = getCompilationUnit(type);
+			TypeDeclaration tdClazz = getTypeDeclaration(cuClazz);
+			
+			updateSimpleType(tdClazz);
+			
+			saveUpdatesCompilationUnit(cuClazz, type, javaDocument);
+			
+		}
+		
+		
 	}
 
 	/**
@@ -417,7 +435,10 @@ public class Particionador extends AbstractHandler {
 			List<SingleVariableDeclaration> parameters = constructor.parameters();
 			if(!parameters.isEmpty()){
 				// adiciona @JsonIgnore
-				
+				NormalAnnotation annotation = constructor.getAST().newNormalAnnotation();
+				annotation.setTypeName(constructor.getAST().newName("JsonIgnore"));
+				constructor.modifiers().add(0, annotation);
+				System.out.println("Printando");
 			}
 		}
 	}
