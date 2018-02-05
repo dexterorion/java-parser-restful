@@ -1,5 +1,7 @@
 package javaparsearrestful.handlers;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +10,8 @@ import java.util.Scanner;
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IWorkspace;
@@ -23,12 +27,10 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.AnnotatableType;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.NormalAnnotation;
-import org.eclipse.jdt.core.dom.SingleMemberAnnotation;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jface.text.BadLocationException;
@@ -268,16 +270,227 @@ public class Particionador extends AbstractHandler {
 		URI uri = URI.create(project.getLocationURI().toString()
 				+ "RestfulProject");
 		projectDescription.setLocationURI(uri);
+		
+		String [] natures = {"org.eclipse.jem.workbench.JavaEMFNature</nature>",
+		                  "org.eclipse.wst.common.modulecore.ModuleCoreNature",
+		                  "org.eclipse.jdt.core.javanature",
+		                  "org.eclipse.m2e.core.maven2Nature",
+		                  "org.eclipse.wst.common.project.facet.core.nature",
+		                  "org.eclipse.wst.jsdt.core.jsNature"};
+		projectDescription.setNatureIds(natures);
+		
 		project.copy(projectDescription, true, null);
 
 		// recupera o projeto para ser utilizado
 		IWorkspaceRoot root = project.getWorkspace().getRoot();
 		IProject newProject = root.getProject(project.getName()
 				+ "RestfulProject");
-		// newProject.create(null);
+
+		// cria o arquivo pom.xml para o projeto
+		createPom(newProject);
+		
+		// cria o arquivo web.xml para o projeto
+		createWebXml(newProject);
+		
+		
 		newProject.open(null);
 
 		return newProject;
+	}
+	
+	/**
+	 * Cria o arquivo web.xml, para ser utilizado como um webservice
+	 * @param newProject
+	 * @throws CoreException 
+	 */
+	private void createWebXml(IProject newProject) throws CoreException {
+		IFolder srcFolder = newProject.getFolder("src");
+		if(!srcFolder.exists())
+			srcFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder mainFolder = srcFolder.getFolder("main");
+		if(!mainFolder.exists())
+			mainFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder webappFolder = mainFolder.getFolder("webapp");
+		if(!webappFolder.exists())
+			webappFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder webinfFolder = webappFolder.getFolder("WEB-INF");
+		if(!webinfFolder.exists())
+			webinfFolder.create(IFolder.FORCE, true, null);
+		
+		IFile webXml = webinfFolder.getFile("web.xml");
+		String webXmlString = new String();
+		webXmlString = generateWebXmlString();
+		InputStream webXmlIS = new ByteArrayInputStream(webXmlString.getBytes());
+		webXml.create(webXmlIS, IFile.FORCE, null);
+		
+	}
+
+	/**
+	 * Retorna uma String, contendo todo o arquivo do web.xml em String
+	 * @return String
+	 */
+	private String generateWebXmlString() {
+		StringBuilder webXmlString = new StringBuilder();
+		webXmlString.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+		webXmlString.append("<web-app xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\" \n");
+		webXmlString.append("    xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd\" \n");
+		webXmlString.append("    id=\"WebApp_ID\" version=\"3.1\">\n");
+		webXmlString.append("  <session-config>\n");
+		webXmlString.append("    <session-timeout>30</session-timeout>\n");
+		webXmlString.append("    <cookie-config>\n");
+		webXmlString.append("      <name>SESSIONID</name>\n");
+		webXmlString.append("    </cookie-config>\n");
+		webXmlString.append("  </session-config>\n");
+		webXmlString.append("</web-app>\n");
+		return webXmlString.toString();
+	}
+
+	/**
+	 * Cria o arquivo pom.xml para o novo projeto, para realizar as importações relativas ao Jackson e Jersey
+	 * @param newProject
+	 * @throws CoreException
+	 */
+	private void createPom(IProject newProject) throws CoreException{
+		IFile pom = newProject.getFile("pom.xml");
+		String pomString = new String();
+		pomString = generatePomString();
+		InputStream pomIS = new ByteArrayInputStream(pomString.getBytes());
+		pom.create(pomIS, IFile.FORCE, null);
+	}
+	
+	/**
+	 * Retorna uma String, contendo todo o arquivo do pom.xml em String
+	 * @return String
+	 */
+	private String generatePomString(){
+		StringBuilder pomString = new StringBuilder();
+		pomString.append("<?xml version=\"1.0\"?>\n");
+		pomString.append("<project\n");
+		pomString.append("	xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\"\n");
+		pomString.append("	xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n");
+		pomString.append("	<modelVersion>4.0.0</modelVersion>\n");
+		pomString.append("	<groupId></groupId>\n");
+		pomString.append("	<artifactId></artifactId>\n");
+		pomString.append("	<version>1.0-SNAPSHOT</version>\n");
+		pomString.append("	<name></name>\n");
+		pomString.append("	<packaging>war</packaging>\n");
+		pomString.append("	<properties>\n");
+		pomString.append("		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n");
+		pomString.append("		<endorsed.dir>${project.build.directory}/endorsed</endorsed.dir>\n");
+		pomString.append("		<version.jdk>1.8</version.jdk>  <!-- 1.7 for JDK 7 -->\n");
+		pomString.append("		<version.mvn.compiler>3.2</version.mvn.compiler>\n");
+		pomString.append("		<version.mvn.war.plugin>2.6</version.mvn.war.plugin>\n");
+		pomString.append("		<version.jersey>2.15</version.jersey>\n");
+		pomString.append("		<version.servlet.api>3.1.0</version.servlet.api>  <!-- use 3.0.1 for Tomcat 7 or Java EE 6 (i.e. Glassfish 3.x) -->\n");
+		pomString.append("	</properties>\n");
+		pomString.append("	<repositories>\n");
+		pomString.append("		<repository>\n");
+		pomString.append("			<id>java.net-Public</id>\n");
+		pomString.append("			<name>Maven Java Net Snapshots and Releases</name>\n");
+		pomString.append("			<url>https://maven.java.net/content/groups/public/</url>\n");
+		pomString.append("			<layout>default</layout>\n");
+		pomString.append("		</repository>\n");
+		pomString.append("		<repository>\n");
+		pomString.append("			<id>Central</id>\n");
+		pomString.append("			<name>Maven Repository</name>\n");
+		pomString.append("			<url>http://repo1.maven.org/maven2</url>\n");
+		pomString.append("			<layout>default</layout>\n");
+		pomString.append("		</repository>\n");
+		pomString.append("		<repository>\n");
+		pomString.append("			<id>central</id>\n");
+		pomString.append("			<name>Central Repository</name>\n");
+		pomString.append("			<url>http://repo.maven.apache.org/maven2</url>\n");
+		pomString.append("			<layout>default</layout>\n");
+		pomString.append("			<snapshots>\n");
+		pomString.append("				<enabled>false</enabled>\n");
+		pomString.append("			</snapshots>\n");
+		pomString.append("		</repository>\n");
+		pomString.append("		<repository>\n");
+		pomString.append("			<url>http://download.eclipse.org/rt/eclipselink/maven.repo/</url>\n");
+		pomString.append("			<id>eclipselink</id>\n");
+		pomString.append("			<layout>default</layout>\n");
+		pomString.append("			<name>Repository for library EclipseLink (JPA 2.0)</name>\n");
+		pomString.append("		</repository>\n");
+		pomString.append("	</repositories>\n");
+		pomString.append("	<dependencies>\n");
+		pomString.append("		<!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>com.google.code.gson</groupId>\n");
+		pomString.append("			<artifactId>gson</artifactId>\n");
+		pomString.append("			<version>2.8.2</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>javax.servlet</groupId>\n");
+		pomString.append("			<artifactId>javax.servlet-api</artifactId>\n");
+		pomString.append("			<version>${version.servlet.api}</version>\n");
+		pomString.append("			<scope>provided</scope>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.apache.httpcomponents</groupId>\n");
+		pomString.append("			<artifactId>httpclient</artifactId>\n");
+		pomString.append("			<version>4.1.1</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<!-- Jersey -->\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.glassfish.jersey.containers</groupId>\n");
+		pomString.append("			<artifactId>jersey-container-servlet</artifactId>\n");
+		pomString.append("			<version>${version.jersey}</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.glassfish.jersey.media</groupId>\n");
+		pomString.append("			<artifactId>jersey-media-json-jackson</artifactId>\n");
+		pomString.append("			<version>${version.jersey}</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.glassfish.jersey.media</groupId>\n");
+		pomString.append("			<artifactId>jersey-media-json-processing</artifactId>\n");
+		pomString.append("			<version>${version.jersey}</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.glassfish.jersey.media</groupId>\n");
+		pomString.append("			<artifactId>jersey-media-multipart</artifactId>\n");
+		pomString.append("			<version>${version.jersey}</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.glassfish.jersey.media</groupId>\n");
+		pomString.append("			<artifactId>jersey-media-sse</artifactId>\n");
+		pomString.append("			<version>${version.jersey}</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("		<dependency>\n");
+		pomString.append("			<groupId>org.slf4j</groupId>\n");
+		pomString.append("			<artifactId>slf4j-api</artifactId>\n");
+		pomString.append("			<version>1.7.25</version>\n");
+		pomString.append("		</dependency>\n");
+		pomString.append("	</dependencies>\n");
+		pomString.append("	<build>\n");
+		pomString.append("		<plugins>\n");
+		pomString.append("			<plugin>\n");
+		pomString.append("				<groupId>org.apache.maven.plugins</groupId>\n");
+		pomString.append("				<artifactId>maven-compiler-plugin</artifactId>\n");
+		pomString.append("				<version>${version.mvn.compiler}</version>\n");
+		pomString.append("				<configuration>\n");
+		pomString.append("					<source>${version.jdk}</source>\n");
+		pomString.append("					<target>${version.jdk}</target>\n");
+		pomString.append("				</configuration>\n");
+		pomString.append("			</plugin>\n");
+		pomString.append("			<plugin>\n");
+		pomString.append("				<groupId>org.apache.maven.plugins</groupId>\n");
+		pomString.append("				<version>${version.mvn.war.plugin}</version>\n");
+		pomString.append("				<artifactId>maven-war-plugin</artifactId>\n");
+		pomString.append("				<configuration>\n");
+		pomString.append("					<failOnMissingWebXml>true</failOnMissingWebXml>\n");
+		pomString.append("					<archive>\n");
+		pomString.append("						<addMavenDescriptor>false</addMavenDescriptor>\n");
+		pomString.append("					</archive>\n");
+		pomString.append("				</configuration>\n");
+		pomString.append("			</plugin>\n");
+		pomString.append("		</plugins>\n");
+		pomString.append("	</build>\n");
+		pomString.append("</project>\n");
+		return pomString.toString();
 	}
 	
 	/**
@@ -349,13 +562,33 @@ public class Particionador extends AbstractHandler {
 			CompilationUnit cuClazz = getCompilationUnit(type);
 			TypeDeclaration tdClazz = getTypeDeclaration(cuClazz);
 			
+			// atualiza o simple type alterando as funções necessárias
 			updateSimpleType(tdClazz);
 			
+			// Adiciona os imports necessários para a classe
+			List<String> imports = new ArrayList<String>();
+			imports.add("com.fasterxml.jackson.annotation.JsonCreator");
+			imports.add("com.fasterxml.jackson.annotation.JsonProperty");
+			imports.add("com.fasterxml.jackson.annotation.JsonIgnore");
+			addImportsToType(cuClazz, imports);
+			
+			// salva as alterações realizadas na classe
 			saveUpdatesCompilationUnit(cuClazz, type, javaDocument);
 			
 		}
-		
-		
+	}
+	
+	/**
+	 * Adiciona uma lista de imports em um type
+	 * @param type
+	 * @param imports
+	 */
+	private void addImportsToType(CompilationUnit cuType, List<String> imports) {
+		for(String importType : imports){
+			ImportDeclaration impD = cuType.getAST().newImportDeclaration();
+			impD.setName(cuType.getAST().newName(importType));
+			cuType.imports().add(impD);
+		}
 	}
 
 	/**
@@ -420,8 +653,35 @@ public class Particionador extends AbstractHandler {
 		// Atualiza os construtores com parâmetros, adicionando as anotações necessárias
 		updateConstructor(type);
 		
+		// Atualiza as funções, adicionando @JsonIgnore para que não ocorra problemas de getNomeDeCampo
+		updateMethods(type);
+		
 	}
 	
+	/** 
+	 * Atualiza os métodos para servirem às chamadas restful
+	 * @param type
+	 */
+	private void updateMethods(TypeDeclaration type) {
+		// retorna métodos construtores
+		List<MethodDeclaration> simpleMethods = findSimpleMethods(type); 
+				
+		for(MethodDeclaration simpleMethod : simpleMethods){
+			// adiciona anotação @JsonIgnore
+			addJsonIgnoreSimpleMethod(simpleMethod);
+		}
+	}
+
+	/**
+	 * Adiciona a anotação @JsonIgnore no método
+	 * @param simpleMethod
+	 */
+	private void addJsonIgnoreSimpleMethod(MethodDeclaration simpleMethod) {
+		NormalAnnotation annotation = simpleMethod.getAST().newNormalAnnotation();
+		annotation.setTypeName(simpleMethod.getAST().newName("JsonIgnore"));
+		simpleMethod.modifiers().add(0, annotation);
+	}
+
 	/**
 	 * Atualiza construtores
 	 * @param type
@@ -431,18 +691,44 @@ public class Particionador extends AbstractHandler {
 		List<MethodDeclaration> constructors = findConstructorMethods(type); 
 		
 		for(MethodDeclaration constructor : constructors){
-			// adiciona anotação @JsonIgnore e @JsonProperties caso seja construtor com parâmetros
+			// adiciona anotação @JsonCreator e @JsonProperties caso seja construtor com parâmetros
 			List<SingleVariableDeclaration> parameters = constructor.parameters();
 			if(!parameters.isEmpty()){
-				// adiciona @JsonIgnore
-				NormalAnnotation annotation = constructor.getAST().newNormalAnnotation();
-				annotation.setTypeName(constructor.getAST().newName("JsonIgnore"));
-				constructor.modifiers().add(0, annotation);
-				System.out.println("Printando");
+				// adiciona @JsonCreator
+				addJsonCreatorConstructor(constructor);
+				
+				// adicionar @JsonProperties
+				// ...
+				
 			}
 		}
 	}
 
+	/**
+	 * Adiciona a anotação @JsonCreator no método
+	 * @param constructor
+	 */
+	private void addJsonCreatorConstructor(MethodDeclaration constructor) {
+		NormalAnnotation annotation = constructor.getAST().newNormalAnnotation();
+		annotation.setTypeName(constructor.getAST().newName("JsonCreator"));
+		constructor.modifiers().add(0, annotation);
+	}
+
+	/**
+	 * Itera pelas funções da classe e recupera aquelas que não são construtoras
+	 * @param type 
+	 * @return List<MethodDeclaration>
+	 */
+	private List<MethodDeclaration> findSimpleMethods(TypeDeclaration type) {
+		List<MethodDeclaration> simpleMethods = new ArrayList<MethodDeclaration>();
+		for(MethodDeclaration method : type.getMethods()){
+			if(!method.isConstructor()){
+				simpleMethods.add(method);
+			}
+		}
+		return simpleMethods;
+	}
+	
 	/**
 	 * Itera pelas funções da classe e recupera aquelas que são construtoras
 	 * @param type 
