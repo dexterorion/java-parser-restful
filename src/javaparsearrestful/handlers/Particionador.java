@@ -56,7 +56,8 @@ public class Particionador extends AbstractHandler {
 	private List<IType> javaInterfaces;
 	// interfaces que extendem de outras interfaces
 	private List<IType> javaChildrenInterfaces;
-	
+	// nome do projeto
+	private String projectName;
 	/**
 	 * The constructor.
 	 */
@@ -137,7 +138,7 @@ public class Particionador extends AbstractHandler {
 			System.out.println(".....");
 			System.out.println("......");
 			// processa as classes que não contém extendem de nenhuma classe ou não implementam nenhum interface
-			processSimpleType(javaProject);
+			processSimpleType();
 			System.out.println("Processamento finalizado!");
 			System.out.println(".");
 			System.out.println("..");
@@ -263,10 +264,12 @@ public class Particionador extends AbstractHandler {
 			System.out.println("Esse não é um projeto Java. Terminando.");
 			System.exit(0);
 		}
+		
+		projectName = project.getName() + "RestfulProject";
 
 		// faz a cÃ³pia
 		IProjectDescription projectDescription = project.getDescription();
-		projectDescription.setName(project.getName() + "RestfulProject");
+		projectDescription.setName(projectName);
 		URI uri = URI.create(project.getLocationURI().toString()
 				+ "RestfulProject");
 		projectDescription.setLocationURI(uri);
@@ -283,8 +286,7 @@ public class Particionador extends AbstractHandler {
 
 		// recupera o projeto para ser utilizado
 		IWorkspaceRoot root = project.getWorkspace().getRoot();
-		IProject newProject = root.getProject(project.getName()
-				+ "RestfulProject");
+		IProject newProject = root.getProject(projectName);
 
 		// cria o arquivo pom.xml para o projeto
 		createPom(newProject);
@@ -292,12 +294,75 @@ public class Particionador extends AbstractHandler {
 		// cria o arquivo web.xml para o projeto
 		createWebXml(newProject);
 		
+		// cria o arquivo RestfulJacksonProvider.java
+		createRestfulProvider(newProject);
 		
 		newProject.open(null);
 
 		return newProject;
 	}
 	
+	/**
+	 * Cria o mapper para transformar objeto em json e json em objeto, no arquivo RestfulJacksonJsonProvider.java
+	 * @param newProject
+	 * @throws CoreException 
+	 */
+	private void createRestfulProvider(IProject newProject) throws CoreException {
+		IFolder srcFolder = newProject.getFolder("src");
+		if(!srcFolder.exists())
+			srcFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder mainFolder = srcFolder.getFolder("main");
+		if(!mainFolder.exists())
+			mainFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder javaFolder = mainFolder.getFolder("java");
+		if(!javaFolder.exists())
+			javaFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder providerFolder = javaFolder.getFolder("provider");
+		if(!providerFolder.exists())
+			providerFolder.create(IFolder.FORCE, true, null);
+		
+		IFile provider = providerFolder.getFile("RestfulJacksonJsonProvider.java");
+		String providerString = new String();
+		providerString = generateProviderString();
+		InputStream providerIS = new ByteArrayInputStream(providerString.getBytes());
+		provider.create(providerIS, IFile.FORCE, null);
+	}
+
+	/**
+	 * Retorna string para geração do mapper
+	 * @return String
+	 */
+	private String generateProviderString() {
+		StringBuilder providerString = new StringBuilder();
+		providerString.append("package main.java.provider;\n");
+		providerString.append("\n");
+		providerString.append("import javax.ws.rs.ext.ContextResolver;\n");
+		providerString.append("import javax.ws.rs.ext.Provider;\n");
+		providerString.append("import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;\n");
+		providerString.append("import com.fasterxml.jackson.annotation.PropertyAccessor;\n");
+		providerString.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+		providerString.append("\n");
+		providerString.append("@Provider\n");
+		providerString.append("public class RestfulJacksonJsonProvider implements ContextResolver<ObjectMapper> {\n");
+		providerString.append("    private static final ObjectMapper MAPPER = new ObjectMapper();\n");
+		providerString.append("\n");
+		providerString.append("    public RestfulJacksonJsonProvider() {\n");
+		providerString.append("    	MAPPER.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);\n");
+		providerString.append("        System.out.println(\"Instantiate RestfulJacksonJsonProvider\");");
+		providerString.append("    }\n");
+		providerString.append("\n");
+		providerString.append("    @Override\n");
+		providerString.append("    public ObjectMapper getContext(Class<?> type) {\n");
+		providerString.append("        System.out.println(\"RestfulJacksonJsonProvider.getContext() called with type: \"+type);");
+		providerString.append("        return MAPPER;\n");
+		providerString.append("    }\n");
+		providerString.append("}\n");
+		return providerString.toString();
+	}
+
 	/**
 	 * Cria o arquivo web.xml, para ser utilizado como um webservice
 	 * @param newProject
@@ -372,10 +437,10 @@ public class Particionador extends AbstractHandler {
 		pomString.append("	xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\"\n");
 		pomString.append("	xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n");
 		pomString.append("	<modelVersion>4.0.0</modelVersion>\n");
-		pomString.append("	<groupId></groupId>\n");
-		pomString.append("	<artifactId></artifactId>\n");
+		pomString.append("	<groupId>br.ufscar.doutorado</groupId>\n");
+		pomString.append("	<artifactId>"+projectName+"</artifactId>\n");
 		pomString.append("	<version>1.0-SNAPSHOT</version>\n");
-		pomString.append("	<name></name>\n");
+		pomString.append("	<name>"+projectName+"</name>\n");
 		pomString.append("	<packaging>war</packaging>\n");
 		pomString.append("	<properties>\n");
 		pomString.append("		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n");
@@ -550,12 +615,11 @@ public class Particionador extends AbstractHandler {
 	/**
 	 * Itera sobre todas as classes pertencentes ao projeto, adicionando anotações quando necessário
 	 * e criando o resource para a classe  
-	 * @param project
 	 * @throws JavaModelException 
 	 * @throws BadLocationException 
 	 * @throws MalformedTreeException 
 	 */
-	private void processSimpleType(IJavaProject project) throws JavaModelException, MalformedTreeException, BadLocationException{
+	private void processSimpleType() throws JavaModelException, MalformedTreeException, BadLocationException{
 //		printGlobalVariableData();
 		for(IType type : javaClasses){
 			Document javaDocument = getDocumentCompilationUnit(type);
