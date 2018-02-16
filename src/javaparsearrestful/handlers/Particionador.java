@@ -4,7 +4,9 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 import org.eclipse.core.commands.AbstractHandler;
@@ -31,7 +33,6 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.NormalAnnotation;
-import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
@@ -56,6 +57,10 @@ public class Particionador extends AbstractHandler {
 	private List<IType> javaInterfaces;
 	// interfaces que extendem de outras interfaces
 	private List<IType> javaChildrenInterfaces;
+	// managers do javaClasses
+	private Map<IType,IType> managersJavaClasses;
+	// resources do javaClasses
+	private Map<IType,IType> resourcesJavaClasses;
 	// nome do projeto
 	private String projectName;
 	/**
@@ -130,6 +135,25 @@ public class Particionador extends AbstractHandler {
 			System.out.println(".....");
 			System.out.println("......");
 			
+			System.out.println("Criando os resource e manager base das classes que não extendem ou implementam classes ou interfaces!");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
+			// cria os resource das classes que não extendem outra classe e não implementam interfaces
+			createResourceSimpleType(javaProject);
+			// cria os manager das classes que não extendem outra classe e não implementam interfaces
+			createManagerSimpleType(javaProject);
+			System.out.println("Processamento finalizado!");
+			System.out.println(".");
+			System.out.println("..");
+			System.out.println("...");
+			System.out.println("....");
+			System.out.println(".....");
+			System.out.println("......");
+			
 			System.out.println("Processando classes que não extendem classe e não implementam interface!");
 			System.out.println(".");
 			System.out.println("..");
@@ -156,6 +180,54 @@ public class Particionador extends AbstractHandler {
 	}
 	
 	/**
+	 * Cria os arquivos de resource base, linkados com os arquivos das Domain
+	 * @param javaProject
+	 */
+	private void createResourceSimpleType(IJavaProject javaProject) {
+		
+		
+	}
+	
+	/**
+	 * Cria o arquivo DomainResource.java, contendo a base para o resource
+	 * @param newProject
+	 * @throws CoreException 
+	 */
+	private IType createResourceJava(IProject newProject, String domainName) throws CoreException {
+		IFolder srcFolder = newProject.getFolder("src");
+		if(!srcFolder.exists())
+			srcFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder mainFolder = srcFolder.getFolder("main");
+		if(!mainFolder.exists())
+			mainFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder javaFolder = mainFolder.getFolder("java");
+		if(!javaFolder.exists())
+			javaFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder utilsFolder = javaFolder.getFolder("resource");
+		if(!utilsFolder.exists())
+			utilsFolder.create(IFolder.FORCE, true, null);
+		
+		IFile utils = utilsFolder.getFile("Utils.java");
+		String utilsString = new String();
+		utilsString = generateUtilsString();
+		InputStream providerIS = new ByteArrayInputStream(utilsString.getBytes());
+		utils.create(providerIS, IFile.FORCE, null);
+		
+	}
+
+	/**
+	 * Cria os arquivos de manager base, linkados com os arquivos das Domain
+	 * @param javaProject
+	 */
+	private void createManagerSimpleType(IJavaProject javaProject) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	/**
 	 * Inicializa as variáveis globais
 	 * @param javaProject
 	 * @throws CoreException 
@@ -167,6 +239,8 @@ public class Particionador extends AbstractHandler {
 		javaChildrenClassesInterfaces = new ArrayList<IType>();
 		javaInterfaces = new ArrayList<IType>();
 		javaChildrenInterfaces = new ArrayList<IType>();
+		managersJavaClasses = new HashMap<IType, IType>();
+		resourcesJavaClasses = new HashMap<IType, IType>();
 		
 		// itera sobre os pacotes e arquivos, para inicializar as variáveis contendo as classes java e interfaces do projeto
 		iterateJavaFiles(javaProject);
@@ -297,11 +371,75 @@ public class Particionador extends AbstractHandler {
 		// cria o arquivo RestfulJacksonProvider.java
 		createRestfulProvider(newProject);
 		
+		// cria o arquivo Utils.java
+		createUtilJava(newProject);
+		
 		newProject.open(null);
 
 		return newProject;
 	}
 	
+	/**
+	 * Cria o arquivo Utils.java, contendo funções úteis para o novo projeto
+	 * @param newProject
+	 * @throws CoreException 
+	 */
+	private void createUtilJava(IProject newProject) throws CoreException {
+		IFolder srcFolder = newProject.getFolder("src");
+		if(!srcFolder.exists())
+			srcFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder mainFolder = srcFolder.getFolder("main");
+		if(!mainFolder.exists())
+			mainFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder javaFolder = mainFolder.getFolder("java");
+		if(!javaFolder.exists())
+			javaFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder utilsFolder = javaFolder.getFolder("utils");
+		if(!utilsFolder.exists())
+			utilsFolder.create(IFolder.FORCE, true, null);
+		
+		IFile utils = utilsFolder.getFile("Utils.java");
+		String utilsString = new String();
+		utilsString = generateUtilsString();
+		InputStream providerIS = new ByteArrayInputStream(utilsString.getBytes());
+		utils.create(providerIS, IFile.FORCE, null);
+		
+	}
+
+	/**
+	 * Retorna string para geração do arquivo Utils
+	 * @return String
+	 */
+	private String generateUtilsString() {
+		StringBuilder utilsString = new StringBuilder();
+		utilsString.append("package main.java.utils;");
+		utilsString.append("");
+		utilsString.append("import java.util.Arrays;");
+		utilsString.append("import java.util.Map;");
+		utilsString.append("");
+		utilsString.append("import com.google.gson.Gson;");
+		utilsString.append("");
+		utilsString.append("public class Utils {");
+		utilsString.append("	private static final Gson gson = new Gson();");
+		utilsString.append("");
+		utilsString.append("	public static Boolean checkParameters(Map<String, Object> data, String ... keys){");
+		utilsString.append("		return data.keySet().containsAll(Arrays.asList(keys));");
+		utilsString.append("	}");
+		utilsString.append("	public static Boolean isJSONValid(String jsonInString){");
+		utilsString.append("		try {");
+		utilsString.append("	          gson.fromJson(jsonInString, Object.class);");
+		utilsString.append("	          return true;");
+		utilsString.append("	      } catch(com.google.gson.JsonSyntaxException ex) { ");
+		utilsString.append("	          return false;");
+		utilsString.append("	      }");
+		utilsString.append("	}");
+		utilsString.append("}");
+		return utilsString.toString();
+	}
+
 	/**
 	 * Cria o mapper para transformar objeto em json e json em objeto, no arquivo RestfulJacksonJsonProvider.java
 	 * @param newProject
@@ -620,19 +758,16 @@ public class Particionador extends AbstractHandler {
 	 * @throws MalformedTreeException 
 	 */
 	private void processSimpleType() throws JavaModelException, MalformedTreeException, BadLocationException{
-//		printGlobalVariableData();
 		for(IType type : javaClasses){
 			Document javaDocument = getDocumentCompilationUnit(type);
 			CompilationUnit cuClazz = getCompilationUnit(type);
 			TypeDeclaration tdClazz = getTypeDeclaration(cuClazz);
 			
-			// atualiza o simple type alterando as funções necessárias
+			// atualiza o simple type alterando as funções necessárias e criando manafger e resource
 			updateSimpleType(tdClazz);
 			
 			// Adiciona os imports necessários para a classe
 			List<String> imports = new ArrayList<String>();
-			imports.add("com.fasterxml.jackson.annotation.JsonCreator");
-			imports.add("com.fasterxml.jackson.annotation.JsonProperty");
 			imports.add("com.fasterxml.jackson.annotation.JsonIgnore");
 			addImportsToType(cuClazz, imports);
 			
@@ -709,16 +844,20 @@ public class Particionador extends AbstractHandler {
 	}
 	
 	/**
-	 * Atualiza a classe simples. Setar: @JsonCreator nos construtores, @JsonProperties nos parâmetros do construtor
-	 * e @JsonIgnore nas funções
+	 * Atualiza a classe simples. Setar: @JsonIgnore nas funções
 	 * @param type
 	 */
 	private void updateSimpleType(TypeDeclaration type){
 		// Atualiza os construtores com parâmetros, adicionando as anotações necessárias
-		updateConstructor(type);
-		
+//		updateConstructor(type);
 		// Atualiza as funções, adicionando @JsonIgnore para que não ocorra problemas de getNomeDeCampo
+		
+		// cria resource respectivo para a classe
+		generateResourceSimpleType(type);
+		
 		updateMethods(type);
+		
+		
 		
 	}
 	
@@ -750,33 +889,33 @@ public class Particionador extends AbstractHandler {
 	 * Atualiza construtores
 	 * @param type
 	 */
-	private void updateConstructor(TypeDeclaration type) {
-		// retorna métodos construtores
-		List<MethodDeclaration> constructors = findConstructorMethods(type); 
-		
-		for(MethodDeclaration constructor : constructors){
-			// adiciona anotação @JsonCreator e @JsonProperties caso seja construtor com parâmetros
-			List<SingleVariableDeclaration> parameters = constructor.parameters();
-			if(!parameters.isEmpty()){
-				// adiciona @JsonCreator
-				addJsonCreatorConstructor(constructor);
-				
-				// adicionar @JsonProperties
-				// ...
-				
-			}
-		}
-	}
+//	private void updateConstructor(TypeDeclaration type) {
+//		// retorna métodos construtores
+//		List<MethodDeclaration> constructors = findConstructorMethods(type); 
+//		
+//		for(MethodDeclaration constructor : constructors){
+//			// adiciona anotação @JsonCreator e @JsonProperties caso seja construtor com parâmetros
+//			List<SingleVariableDeclaration> parameters = constructor.parameters();
+//			if(!parameters.isEmpty()){
+//				// adiciona @JsonCreator
+//				addJsonCreatorConstructor(constructor);
+//				
+//				// adicionar @JsonProperties
+//				// ...
+//				
+//			}
+//		}
+//	}
 
 	/**
 	 * Adiciona a anotação @JsonCreator no método
 	 * @param constructor
 	 */
-	private void addJsonCreatorConstructor(MethodDeclaration constructor) {
-		NormalAnnotation annotation = constructor.getAST().newNormalAnnotation();
-		annotation.setTypeName(constructor.getAST().newName("JsonCreator"));
-		constructor.modifiers().add(0, annotation);
-	}
+//	private void addJsonCreatorConstructor(MethodDeclaration constructor) {
+//		NormalAnnotation annotation = constructor.getAST().newNormalAnnotation();
+//		annotation.setTypeName(constructor.getAST().newName("JsonCreator"));
+//		constructor.modifiers().add(0, annotation);
+//	}
 
 	/**
 	 * Itera pelas funções da classe e recupera aquelas que não são construtoras
@@ -813,7 +952,12 @@ public class Particionador extends AbstractHandler {
 	 * @param type
 	 */
 	private void generateResourceSimpleType(TypeDeclaration type){
-		// 
+		// primeiro, cria o arquivo DominioResource, já adicionando toda a base do arquivo
+		
+		
+		// segundo, cria a função newDominio, que verificará quais são os construtores e criará uma função
+		// para retorno específico
+		
 	}
 	
 }
