@@ -1073,7 +1073,6 @@ public class Particionador extends AbstractHandler {
 				utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
 				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newSimpleName("main.java.utils.Utils"));
 				// checkParameters(data..)
-				
 				SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
 				utilsCheckParametersInvocation.arguments().add(dataArgument);
 				// comparação dentro do if
@@ -1087,6 +1086,7 @@ public class Particionador extends AbstractHandler {
 				ifConstructor.setThenStatement(returnNewDomain);
 				
 				// itera pelos parâmetros para adicionar nos argumentos
+				
 			}
 		}
 		
