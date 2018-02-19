@@ -29,10 +29,19 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.Block;
+import org.eclipse.jdt.core.dom.BodyDeclaration;
+import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.NormalAnnotation;
+import org.eclipse.jdt.core.dom.ParameterizedType;
+import org.eclipse.jdt.core.dom.SimpleType;
+import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
+import org.eclipse.jdt.core.dom.ThrowStatement;
+import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
@@ -189,6 +198,8 @@ public class Particionador extends AbstractHandler {
 			// salva um link entre a classe e o resource
 			resourcesJavaClasses.put(clazz, createResourceJava(javaProject, clazz, clazz.getElementName()));
 		}
+		
+		javaProject.getProject().getWorkspace().save(true,null);
 	}
 	
 	/**
@@ -197,35 +208,10 @@ public class Particionador extends AbstractHandler {
 	 * @throws CoreException 
 	 */
 	private IType createResourceJava(IJavaProject javaProject, IType clazz, String domainName) throws CoreException {
-		IFolder srcFolder = javaProject.getProject().getFolder("src");
-		if(!srcFolder.exists())
-			srcFolder.create(IFolder.FORCE, true, null);
-		
-		IFolder mainFolder = srcFolder.getFolder("main");
-		if(!mainFolder.exists())
-			mainFolder.create(IFolder.FORCE, true, null);
-		
-		IFolder javaFolder = mainFolder.getFolder("java");
-		if(!javaFolder.exists())
-			javaFolder.create(IFolder.FORCE, true, null);
-		
-		IFolder resourceFolder = javaFolder.getFolder("resource");
-		if(!resourceFolder.exists())
-			resourceFolder.create(IFolder.FORCE, true, null);
-		
-		// verifica se existe o package resource, se não existir, cria
-		IPackageFragmentRoot resourcePackageRoot = javaProject.getPackageFragmentRoot(resourceFolder);
-		IPackageFragment resourcePackage;
-		if(!resourcePackageRoot.exists()){
-			resourcePackage = resourcePackageRoot.createPackageFragment("", true, null);
-		}
-		else{
-			resourcePackage = resourcePackageRoot.getPackageFragment("");
-		}
-		
 		// cria o resource relativo ao clazz no package resource e retorna
 		String resourceString = createResourceContentBasis(clazz, domainName);
-		ICompilationUnit resourceCu = resourcePackage.createCompilationUnit(domainName+"Resource.java", resourceString, true, null);
+		ICompilationUnit resourceCu = clazz.getPackageFragment().createCompilationUnit(domainName+"Resource.java", resourceString, true, null);
+		clazz.getPackageFragment().makeConsistent(null);
 		return resourceCu.getType(domainName+"Resource");
 	}
 
@@ -236,7 +222,7 @@ public class Particionador extends AbstractHandler {
 	 */
 	private String createResourceContentBasis(IType clazz, String domainName) {
 		StringBuilder resourceBuilder = new StringBuilder();
-		resourceBuilder.append("package main.java.resource;\n");
+		resourceBuilder.append("package "+clazz.getPackageFragment().getElementName()+";\n");
 		resourceBuilder.append("\n");
 		resourceBuilder.append("import java.util.Map;\n");
 		resourceBuilder.append("\n");
@@ -801,7 +787,7 @@ public class Particionador extends AbstractHandler {
 			TypeDeclaration tdClazz = getTypeDeclaration(cuClazz);
 			
 			// atualiza o simple type alterando as funções necessárias e criando manafger e resource
-			updateSimpleType(tdClazz);
+			updateSimpleType(tdClazz, type);
 			
 			// Adiciona os imports necessários para a classe
 			List<String> imports = new ArrayList<String>();
@@ -883,19 +869,19 @@ public class Particionador extends AbstractHandler {
 	/**
 	 * Atualiza a classe simples. Setar: @JsonIgnore nas funções
 	 * @param type
+	 * @throws BadLocationException 
+	 * @throws JavaModelException 
+	 * @throws MalformedTreeException 
 	 */
-	private void updateSimpleType(TypeDeclaration type){
+	private void updateSimpleType(TypeDeclaration type, IType clazz) throws MalformedTreeException, JavaModelException, BadLocationException{
 		// Atualiza os construtores com parâmetros, adicionando as anotações necessárias
 //		updateConstructor(type);
 		// Atualiza as funções, adicionando @JsonIgnore para que não ocorra problemas de getNomeDeCampo
 		
-		// cria resource respectivo para a classe
-		generateResourceSimpleType(type);
+		// atualiza resource respectivo para a classe
+		updateResourceSimpleType(type, clazz);
 		
 		updateMethods(type);
-		
-		
-		
 	}
 	
 	/** 
@@ -987,13 +973,78 @@ public class Particionador extends AbstractHandler {
 	/**
 	 * Realiza a geração dos resources das classes que não extendem e nem implementam nenhuma classe ou interface 
 	 * @param type
+	 * @throws BadLocationException 
+	 * @throws JavaModelException 
+	 * @throws MalformedTreeException 
 	 */
-	private void generateResourceSimpleType(TypeDeclaration type){
-		// primeiro, cria o arquivo DominioResource, já adicionando toda a base do arquivo
-		
-		
-		// segundo, cria a função newDominio, que verificará quais são os construtores e criará uma função
+	private void updateResourceSimpleType(TypeDeclaration type, IType clazz) throws MalformedTreeException, JavaModelException, BadLocationException{
+		// primeiro, cria a função newDominio, que verificará quais são os construtores e criará uma função
 		// para retorno específico
+		createNewDomainFunctionSimpleType(clazz);
+		
+		// depois, cria a função get
+		
+		// por última, cria as entradas respectivas para cada função
+		
+	}
+
+	/** 
+	 * Atualiza o resource com as funções específicas
+	 * @param clazz
+	 * @throws BadLocationException 
+	 * @throws JavaModelException 
+	 * @throws MalformedTreeException 
+	 */
+	private void createNewDomainFunctionSimpleType(IType clazz) throws MalformedTreeException, JavaModelException, BadLocationException {
+		IType resourceDomain = resourcesJavaClasses.get(clazz);
+		
+		Document resourceDocument = getDocumentCompilationUnit(resourceDomain);
+		
+		CompilationUnit cuResource = getCompilationUnit(resourceDomain);
+		TypeDeclaration tdResource = getTypeDeclaration(cuResource);
+		
+		// adiciona o método newDomain
+		MethodDeclaration newDomainMethod = tdResource.getAST().newMethodDeclaration();
+		// nome do método
+		newDomainMethod.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
+		// flag do método
+		newDomainMethod.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PRIVATE));
+		// tipo de retorno do método
+		newDomainMethod.setReturnType2(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+		// parâmetro do método
+		// primeiro a declaração da variável
+		SingleVariableDeclaration mapParameter = tdResource.getAST().newSingleVariableDeclaration();
+		mapParameter.setName(tdResource.getAST().newSimpleName("data"));
+		// tipo parametrizado Map<String,Object>
+		ParameterizedType mapPT = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
+		mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
+		mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+		mapParameter.setType(mapPT);
+		newDomainMethod.parameters().add(mapParameter);
+		// throw declaration na declaração
+		Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
+		newDomainMethod.thrownExceptionTypes().add(throwException);
+		// corpo
+		Block bodyNewDomainMethod = tdResource.getAST().newBlock(); 
+		// throw dentro do corpo
+		ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
+		ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
+		cicThrowException.arguments().add(tdResource.getAST().newSimpleName("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido"));
+		cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
+		throwNewException.setExpression(cicThrowException);
+		// adiciona o throw no corpo
+		bodyNewDomainMethod.statements().add(0, throwNewException);
+		// seta o corpo na função
+		newDomainMethod.setBody(bodyNewDomainMethod);
+		// adiciona a função na classe
+		tdResource.bodyDeclarations().add(0, newDomainMethod);
+		
+		// agora, verifica todos os construtores, para ir adicionando as criações, dentro da função
+		// levando em consideração parâmetros
+		
+		
+		// salva as alterações realizadas na classe
+		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
 		
 	}
 	
