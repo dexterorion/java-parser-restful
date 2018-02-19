@@ -22,6 +22,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaProject;
+import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.IType;
@@ -33,13 +34,18 @@ import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.NormalAnnotation;
 import org.eclipse.jdt.core.dom.ParameterizedType;
+import org.eclipse.jdt.core.dom.ReturnStatement;
+import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SimpleType;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
+import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.ThrowStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
@@ -232,7 +238,6 @@ public class Particionador extends AbstractHandler {
 		resourceBuilder.append("import javax.ws.rs.Produces;\n");
 		resourceBuilder.append("import javax.ws.rs.core.MediaType;\n");
 		resourceBuilder.append("\n");
-		resourceBuilder.append("import main.java.utils.Utils;\n");
 		resourceBuilder.append("import "+clazz.getFullyQualifiedName()+";\n");
 		resourceBuilder.append("\n");
 		resourceBuilder.append("@Path(\"/"+clazz.getElementName()+"\")\n");
@@ -1026,14 +1031,6 @@ public class Particionador extends AbstractHandler {
 		newDomainMethod.thrownExceptionTypes().add(throwException);
 		// corpo
 		Block bodyNewDomainMethod = tdResource.getAST().newBlock(); 
-		// throw dentro do corpo
-		ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
-		ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
-		cicThrowException.arguments().add(tdResource.getAST().newSimpleName("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido"));
-		cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
-		throwNewException.setExpression(cicThrowException);
-		// adiciona o throw no corpo
-		bodyNewDomainMethod.statements().add(0, throwNewException);
 		// seta o corpo na função
 		newDomainMethod.setBody(bodyNewDomainMethod);
 		// adiciona a função na classe
@@ -1041,6 +1038,57 @@ public class Particionador extends AbstractHandler {
 		
 		// agora, verifica todos os construtores, para ir adicionando as criações, dentro da função
 		// levando em consideração parâmetros
+		// se não tiver construtor nenhum, adiciona simplesmente um retorno 
+		List<MethodDeclaration> constructors = findConstructorMethods(tdResource);
+		if(constructors.isEmpty()){
+			// não tem nenhum construtor, então cria somente um retorno
+			ReturnStatement returnZeroConstrutor = tdResource.getAST().newReturnStatement();
+			// criacao do new Domain
+			ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
+			cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+			// adiciona o new Domain no retorno
+			returnZeroConstrutor.setExpression(cicNewDomain);
+			// adiciona ao corpo do método
+			bodyNewDomainMethod.statements().add(0, returnZeroConstrutor);
+		}
+		else{
+			// throw dentro do corpo
+			ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
+			ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
+			StringLiteral argumentException = tdResource.getAST().newStringLiteral();
+			argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+			cicThrowException.arguments().add(argumentException);
+			cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
+			throwNewException.setExpression(cicThrowException);
+			// adiciona o throw no corpo
+			bodyNewDomainMethod.statements().add(0, throwNewException);
+			
+			// vai adicionando os if's para os construtores
+			for(MethodDeclaration constructor : constructors){
+				// inicia o if
+				IfStatement ifConstructor = tdResource.getAST().newIfStatement();
+				
+				// chamada para Utils.checkParameters(data, "param1", "param2", ...)
+				MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
+				utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
+				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newSimpleName("main.java.utils.Utils"));
+				// checkParameters(data..)
+				
+				SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+				utilsCheckParametersInvocation.arguments().add(dataArgument);
+				// comparação dentro do if
+				ifConstructor.setExpression(utilsCheckParametersInvocation);
+				// chamada para return new Domain(parameters)
+				ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
+				cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+				ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
+				returnNewDomain.setExpression(cicNewDomain);
+				// seta o corpo do then
+				ifConstructor.setThenStatement(returnNewDomain);
+				
+				// itera pelos parâmetros para adicionar nos argumentos
+			}
+		}
 		
 		
 		// salva as alterações realizadas na classe
