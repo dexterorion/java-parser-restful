@@ -182,10 +182,13 @@ public class Particionador extends AbstractHandler {
 	/**
 	 * Cria os arquivos de resource base, linkados com os arquivos das Domain
 	 * @param javaProject
+	 * @throws CoreException 
 	 */
-	private void createResourceSimpleType(IJavaProject javaProject) {
-		
-		
+	private void createResourceSimpleType(IJavaProject javaProject) throws CoreException {
+		for(IType clazz : javaClasses){
+			// salva um link entre a classe e o resource
+			resourcesJavaClasses.put(clazz, createResourceJava(javaProject, clazz, clazz.getElementName()));
+		}
 	}
 	
 	/**
@@ -193,8 +196,8 @@ public class Particionador extends AbstractHandler {
 	 * @param newProject
 	 * @throws CoreException 
 	 */
-	private IType createResourceJava(IProject newProject, String domainName) throws CoreException {
-		IFolder srcFolder = newProject.getFolder("src");
+	private IType createResourceJava(IJavaProject javaProject, IType clazz, String domainName) throws CoreException {
+		IFolder srcFolder = javaProject.getProject().getFolder("src");
 		if(!srcFolder.exists())
 			srcFolder.create(IFolder.FORCE, true, null);
 		
@@ -206,16 +209,50 @@ public class Particionador extends AbstractHandler {
 		if(!javaFolder.exists())
 			javaFolder.create(IFolder.FORCE, true, null);
 		
-		IFolder utilsFolder = javaFolder.getFolder("resource");
-		if(!utilsFolder.exists())
-			utilsFolder.create(IFolder.FORCE, true, null);
+		IFolder resourceFolder = javaFolder.getFolder("resource");
+		if(!resourceFolder.exists())
+			resourceFolder.create(IFolder.FORCE, true, null);
 		
-		IFile utils = utilsFolder.getFile("Utils.java");
-		String utilsString = new String();
-		utilsString = generateUtilsString();
-		InputStream providerIS = new ByteArrayInputStream(utilsString.getBytes());
-		utils.create(providerIS, IFile.FORCE, null);
+		// verifica se existe o package resource, se não existir, cria
+		IPackageFragmentRoot resourcePackageRoot = javaProject.getPackageFragmentRoot(resourceFolder);
+		IPackageFragment resourcePackage;
+		if(!resourcePackageRoot.exists()){
+			resourcePackage = resourcePackageRoot.createPackageFragment("", true, null);
+		}
+		else{
+			resourcePackage = resourcePackageRoot.getPackageFragment("");
+		}
 		
+		// cria o resource relativo ao clazz no package resource e retorna
+		String resourceString = createResourceContentBasis(clazz, domainName);
+		ICompilationUnit resourceCu = resourcePackage.createCompilationUnit(domainName+"Resource.java", resourceString, true, null);
+		return resourceCu.getType(domainName+"Resource");
+	}
+
+	/**
+	 * Cria a string contendo o corpo do resource 
+	 * @param domainName
+	 * @return String
+	 */
+	private String createResourceContentBasis(IType clazz, String domainName) {
+		StringBuilder resourceBuilder = new StringBuilder();
+		resourceBuilder.append("package main.java.resource;\n");
+		resourceBuilder.append("\n");
+		resourceBuilder.append("import java.util.Map;\n");
+		resourceBuilder.append("\n");
+		resourceBuilder.append("import javax.ws.rs.Consumes;\n");
+		resourceBuilder.append("import javax.ws.rs.POST;\n");
+		resourceBuilder.append("import javax.ws.rs.Path;\n");
+		resourceBuilder.append("import javax.ws.rs.Produces;\n");
+		resourceBuilder.append("import javax.ws.rs.core.MediaType;\n");
+		resourceBuilder.append("\n");
+		resourceBuilder.append("import main.java.utils.Utils;\n");
+		resourceBuilder.append("import "+clazz.getFullyQualifiedName()+";\n");
+		resourceBuilder.append("\n");
+		resourceBuilder.append("@Path(\"/"+clazz.getElementName()+"\")\n");
+		resourceBuilder.append("public class "+clazz.getElementName()+"Resource {\n");
+		resourceBuilder.append("}\n");
+		return resourceBuilder.toString();
 	}
 
 	/**
@@ -415,28 +452,28 @@ public class Particionador extends AbstractHandler {
 	 */
 	private String generateUtilsString() {
 		StringBuilder utilsString = new StringBuilder();
-		utilsString.append("package main.java.utils;");
-		utilsString.append("");
-		utilsString.append("import java.util.Arrays;");
-		utilsString.append("import java.util.Map;");
-		utilsString.append("");
-		utilsString.append("import com.google.gson.Gson;");
-		utilsString.append("");
-		utilsString.append("public class Utils {");
-		utilsString.append("	private static final Gson gson = new Gson();");
-		utilsString.append("");
-		utilsString.append("	public static Boolean checkParameters(Map<String, Object> data, String ... keys){");
-		utilsString.append("		return data.keySet().containsAll(Arrays.asList(keys));");
-		utilsString.append("	}");
-		utilsString.append("	public static Boolean isJSONValid(String jsonInString){");
-		utilsString.append("		try {");
-		utilsString.append("	          gson.fromJson(jsonInString, Object.class);");
-		utilsString.append("	          return true;");
-		utilsString.append("	      } catch(com.google.gson.JsonSyntaxException ex) { ");
-		utilsString.append("	          return false;");
-		utilsString.append("	      }");
-		utilsString.append("	}");
-		utilsString.append("}");
+		utilsString.append("package main.java.utils;\n");
+		utilsString.append("\n");
+		utilsString.append("import java.util.Arrays;\n");
+		utilsString.append("import java.util.Map;\n");
+		utilsString.append("\n");
+		utilsString.append("import com.google.gson.Gson;\n");
+		utilsString.append("\n");
+		utilsString.append("public class Utils {\n");
+		utilsString.append("	private static final Gson gson = new Gson();\n");
+		utilsString.append("\n");
+		utilsString.append("	public static Boolean checkParameters(Map<String, Object> data, String ... keys){\n");
+		utilsString.append("		return data.keySet().containsAll(Arrays.asList(keys));\n");
+		utilsString.append("	}\n");
+		utilsString.append("	public static Boolean isJSONValid(String jsonInString){\n");
+		utilsString.append("		try {\n");
+		utilsString.append("	          gson.fromJson(jsonInString, Object.class);\n");
+		utilsString.append("	          return true;\n");
+		utilsString.append("	      } catch(com.google.gson.JsonSyntaxException ex) { \n");
+		utilsString.append("	          return false;\n");
+		utilsString.append("	      }\n");
+		utilsString.append("	}\n");
+		utilsString.append("}\n");
 		return utilsString.toString();
 	}
 
