@@ -20,6 +20,7 @@ import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IMethod;
@@ -62,6 +63,14 @@ import org.eclipse.text.edits.TextEdit;
  * @see org.eclipse.core.commands.AbstractHandler
  */
 public class Particionador extends AbstractHandler {
+	// classes que não extendem nenhuma classe e nem implementam interfaces e são abstratas
+	private List<IType> javaClassesAbstract;
+	// classes que extendem alguma classe, mas não implementam interfaces e são abstratas
+	private List<IType> javaChildrenClassesAbstract;
+	// classes que não extendem alguma classe, mas que implementam interfaces e são abstratas
+	private List<IType> javaClassesInterfacesAbstract;
+	// classes que extendem classes e implementam interfaces e são abstratas
+	private List<IType> javaChildrenClassesInterfacesAbstract;
 	// classes que não extendem nenhuma classe e nem implementam interfaces
 	private List<IType> javaClasses;
 	// classes que extendem alguma classe, mas não implementam interfaces
@@ -234,15 +243,9 @@ public class Particionador extends AbstractHandler {
 		resourceBuilder.append("\n");
 		resourceBuilder.append("import java.util.Map;\n");
 		resourceBuilder.append("\n");
-		resourceBuilder.append("import javax.ws.rs.Consumes;\n");
-		resourceBuilder.append("import javax.ws.rs.POST;\n");
-		resourceBuilder.append("import javax.ws.rs.Path;\n");
-		resourceBuilder.append("import javax.ws.rs.Produces;\n");
-		resourceBuilder.append("import javax.ws.rs.core.MediaType;\n");
-		resourceBuilder.append("\n");
 		resourceBuilder.append("import "+clazz.getFullyQualifiedName()+";\n");
 		resourceBuilder.append("\n");
-		resourceBuilder.append("@Path(\"/"+clazz.getElementName()+"\")\n");
+		resourceBuilder.append("@javax.ws.rs.Path(\"/"+clazz.getElementName()+"\")\n");
 		resourceBuilder.append("public class "+clazz.getElementName()+"Resource {\n");
 		resourceBuilder.append("}\n");
 		return resourceBuilder.toString();
@@ -267,6 +270,10 @@ public class Particionador extends AbstractHandler {
 		javaChildrenClasses = new ArrayList<IType>();
 		javaClassesInterfaces = new ArrayList<IType>();
 		javaChildrenClassesInterfaces = new ArrayList<IType>();
+		javaClassesAbstract = new ArrayList<IType>();
+		javaChildrenClassesAbstract = new ArrayList<IType>();
+		javaClassesInterfacesAbstract = new ArrayList<IType>();
+		javaChildrenClassesInterfacesAbstract = new ArrayList<IType>();
 		javaInterfaces = new ArrayList<IType>();
 		javaChildrenInterfaces = new ArrayList<IType>();
 		managersJavaClasses = new HashMap<IType, IType>();
@@ -322,22 +329,34 @@ public class Particionador extends AbstractHandler {
 					if(extendsClass){
 						// se implementa interface
 						if(implementsInterface){
-							javaChildrenClassesInterfaces.add(type);
+							if(Flags.isAbstract(type.getFlags()))
+								javaChildrenClassesInterfacesAbstract.add(type);
+							else
+								javaChildrenClassesInterfaces.add(type);
 						}
 						// se não implementa interfaces
 						else{
-							javaChildrenClasses.add(type);
+							if(Flags.isAbstract(type.getFlags()))
+								javaChildrenClassesAbstract.add(type);
+							else
+								javaChildrenClasses.add(type);
 						}
 					}
 					// se não extende classe
 					else{
 						// se implementa interface
 						if(implementsInterface){
-							javaClassesInterfaces.add(type);
+							if(Flags.isAbstract(type.getFlags()))
+								javaClassesInterfacesAbstract.add(type);
+							else
+								javaClassesInterfaces.add(type);
 						}
 						// se não implementa interfaces
 						else{
-							javaClasses.add(type);
+							if(Flags.isAbstract(type.getFlags()))
+								javaClassesAbstract.add(type);
+							else
+								javaClasses.add(type);
 						}
 					}
 				}
@@ -991,8 +1010,38 @@ public class Particionador extends AbstractHandler {
 		
 		// depois, cria a função get
 		
-		// por última, cria as entradas respectivas para cada função
+		// depois, cria as entradas respectivas para cada função
 		
+		// por último, atualiza todos os imports
+		updateResourceImports(clazz, type);
+	}
+
+	/**
+	 * Atualiza os imports da classe resource relativa ao domain
+	 * @param clazz
+	 * @param type
+	 * @throws JavaModelException 
+	 * @throws BadLocationException 
+	 * @throws MalformedTreeException 
+	 */
+	private void updateResourceImports(IType clazz, TypeDeclaration type) throws JavaModelException, MalformedTreeException, BadLocationException {
+		IType resourceDomain = resourcesJavaClasses.get(clazz);
+		
+		Document resourceDocument = getDocumentCompilationUnit(resourceDomain);
+		
+		CompilationUnit cuResource = getCompilationUnit(resourceDomain);
+		
+		// recupera imports da classe
+		List<ImportDeclaration> importsClazz = getCompilationUnit(clazz).imports();
+		// itera e verifica quais imports são necessários
+		for(ImportDeclaration importClazz : importsClazz){
+			if(!cuResource.toString().contains(importClazz.getName().toString())){
+				cuResource.imports().add((ImportDeclaration) ASTNode.copySubtree(cuResource.getAST(), importClazz));
+			}
+		}
+		
+		// salva as alterações realizadas na classe
+		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
 	}
 
 	/** 
@@ -1067,52 +1116,54 @@ public class Particionador extends AbstractHandler {
 			
 			// vai adicionando os if's para os construtores
 			for(MethodDeclaration constructor : constructors){
-				// inicia o if
-				IfStatement ifConstructor = tdResource.getAST().newIfStatement();
-				
-				// chamada para Utils.checkParameters(data, "param1", "param2", ...)
-				MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
-				utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
-				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
-				// checkParameters(data..)
-				SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
-				utilsCheckParametersInvocation.arguments().add(dataArgument);
-				// comparação dentro do if
-				ifConstructor.setExpression(utilsCheckParametersInvocation);
-				// chamada para return new Domain(parameters)
-				ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
-				cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
-				ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
-				returnNewDomain.setExpression(cicNewDomain);
-				// seta o corpo do then
-				ifConstructor.setThenStatement(returnNewDomain);
-				
-				// itera pelos parâmetros para adicionar nos argumentos
-				for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
-					StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
-					variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
-					utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+				if(!Modifier.isPrivate(constructor.getFlags())){
+					// inicia o if
+					IfStatement ifConstructor = tdResource.getAST().newIfStatement();
 					
-					// data.get('arg')
-					// arg
-					StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
-					variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
-					// data.get
-					MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
-					dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
-					dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
-					dataGetInvoc.arguments().add(variableStringLiteralReturn);
+					// chamada para Utils.checkParameters(data, "param1", "param2", ...)
+					MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
+					utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
+					utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+					// checkParameters(data..)
+					SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+					utilsCheckParametersInvocation.arguments().add(dataArgument);
+					// comparação dentro do if
+					ifConstructor.setExpression(utilsCheckParametersInvocation);
+					// chamada para return new Domain(parameters)
+					ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
+					cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+					ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
+					returnNewDomain.setExpression(cicNewDomain);
+					// seta o corpo do then
+					ifConstructor.setThenStatement(returnNewDomain);
 					
-					// (Type)data.get('arg')
-					Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
-					CastExpression castArgument = tdResource.getAST().newCastExpression();
-					castArgument.setType(returnTypeArg);
-					castArgument.setExpression(dataGetInvoc);
+					// itera pelos parâmetros para adicionar nos argumentos
+					for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
+						StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
+						variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
+						utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+						
+						// data.get('arg')
+						// arg
+						StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
+						variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
+						// data.get
+						MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
+						dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
+						dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
+						dataGetInvoc.arguments().add(variableStringLiteralReturn);
+						
+						// (Type)data.get('arg')
+						Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
+						CastExpression castArgument = tdResource.getAST().newCastExpression();
+						castArgument.setType(returnTypeArg);
+						castArgument.setExpression(dataGetInvoc);
+						
+						cicNewDomain.arguments().add(castArgument);
+					}
 					
-					cicNewDomain.arguments().add(castArgument);
+					bodyNewDomainMethod.statements().add(0, ifConstructor);
 				}
-				
-				bodyNewDomainMethod.statements().add(0, ifConstructor);
 			}
 		}
 		
