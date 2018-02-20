@@ -29,6 +29,7 @@ import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
+import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
@@ -1086,7 +1087,12 @@ public class Particionador extends AbstractHandler {
 				ifConstructor.setThenStatement(returnNewDomain);
 				
 				// itera pelos parâmetros para adicionar nos argumentos
-				
+				for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
+					StringLiteral variableStringLiteral = tdResource.getAST().newStringLiteral();
+					variableStringLiteral.setLiteralValue(svdConstructor.getName().toString());
+					
+					
+				}
 			}
 		}
 		
