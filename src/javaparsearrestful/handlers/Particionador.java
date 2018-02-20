@@ -33,6 +33,7 @@ import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BodyDeclaration;
+import org.eclipse.jdt.core.dom.CastExpression;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.IfStatement;
@@ -986,7 +987,7 @@ public class Particionador extends AbstractHandler {
 	private void updateResourceSimpleType(TypeDeclaration type, IType clazz) throws MalformedTreeException, JavaModelException, BadLocationException{
 		// primeiro, cria a função newDominio, que verificará quais são os construtores e criará uma função
 		// para retorno específico
-		createNewDomainFunctionSimpleType(clazz);
+		createNewDomainFunctionSimpleType(clazz, type);
 		
 		// depois, cria a função get
 		
@@ -1001,7 +1002,7 @@ public class Particionador extends AbstractHandler {
 	 * @throws JavaModelException 
 	 * @throws MalformedTreeException 
 	 */
-	private void createNewDomainFunctionSimpleType(IType clazz) throws MalformedTreeException, JavaModelException, BadLocationException {
+	private void createNewDomainFunctionSimpleType(IType clazz, TypeDeclaration typeClazz) throws MalformedTreeException, JavaModelException, BadLocationException {
 		IType resourceDomain = resourcesJavaClasses.get(clazz);
 		
 		Document resourceDocument = getDocumentCompilationUnit(resourceDomain);
@@ -1040,7 +1041,7 @@ public class Particionador extends AbstractHandler {
 		// agora, verifica todos os construtores, para ir adicionando as criações, dentro da função
 		// levando em consideração parâmetros
 		// se não tiver construtor nenhum, adiciona simplesmente um retorno 
-		List<MethodDeclaration> constructors = findConstructorMethods(tdResource);
+		List<MethodDeclaration> constructors = findConstructorMethods(typeClazz);
 		if(constructors.isEmpty()){
 			// não tem nenhum construtor, então cria somente um retorno
 			ReturnStatement returnZeroConstrutor = tdResource.getAST().newReturnStatement();
@@ -1072,7 +1073,7 @@ public class Particionador extends AbstractHandler {
 				// chamada para Utils.checkParameters(data, "param1", "param2", ...)
 				MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
 				utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
-				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newSimpleName("main.java.utils.Utils"));
+				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
 				// checkParameters(data..)
 				SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
 				utilsCheckParametersInvocation.arguments().add(dataArgument);
@@ -1088,11 +1089,30 @@ public class Particionador extends AbstractHandler {
 				
 				// itera pelos parâmetros para adicionar nos argumentos
 				for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
-					StringLiteral variableStringLiteral = tdResource.getAST().newStringLiteral();
-					variableStringLiteral.setLiteralValue(svdConstructor.getName().toString());
+					StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
+					variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
+					utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
 					
+					// data.get('arg')
+					// arg
+					StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
+					variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
+					// data.get
+					MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
+					dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
+					dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
+					dataGetInvoc.arguments().add(variableStringLiteralReturn);
 					
+					// (Type)data.get('arg')
+					Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
+					CastExpression castArgument = tdResource.getAST().newCastExpression();
+					castArgument.setType(returnTypeArg);
+					castArgument.setExpression(dataGetInvoc);
+					
+					cicNewDomain.arguments().add(castArgument);
 				}
+				
+				bodyNewDomainMethod.statements().add(0, ifConstructor);
 			}
 		}
 		
