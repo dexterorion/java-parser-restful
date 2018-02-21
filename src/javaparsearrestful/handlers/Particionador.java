@@ -1023,8 +1023,18 @@ public class Particionador extends AbstractHandler {
 	 * para as chamadas REST
 	 * @param clazz
 	 * @param type
+	 * @throws JavaModelException 
+	 * @throws BadLocationException 
+	 * @throws MalformedTreeException 
 	 */
-	private void createMethodsEntriesSimpleType(IType clazz, TypeDeclaration type) {
+	private void createMethodsEntriesSimpleType(IType clazz, TypeDeclaration type) throws JavaModelException, MalformedTreeException, BadLocationException {
+		IType resourceDomain = resourcesJavaClasses.get(clazz);
+		
+		Document resourceDocument = getDocumentCompilationUnit(resourceDomain);
+		
+		CompilationUnit cuResource = getCompilationUnit(resourceDomain);
+		TypeDeclaration tdResource = getTypeDeclaration(cuResource);
+		
 		// recupera os métodos em um Map<String,List<MethodDeclaration>>
 		Map<String, List<MethodDeclaration>> mapMethods = findMethodsGroupedByName(type);
 		
@@ -1035,72 +1045,131 @@ public class Particionador extends AbstractHandler {
 			String funcionName = "restCall"+entry.getKey();
 			List<MethodDeclaration> methodsSameName = entry.getValue();
 			
+			// são dois tipos de chamadas de método
+			// existem os métodos 'normais'
+			// existem os métodos 'static'
+			// a 'chamada' é muito parecida, muda somente se você vai usar um objeto objeto.nomeMetodo()
+			// para realizar a chamada, ou se você vai fazer a chama 'direto' Classe.nomeMetodo()
+			// é necessário verificar se terá um tipo de retorno ou não
+			// se tiver, dá um return, senão, não precisa
 			
+			//	@javax.ws.rs.Path("toString")
+			//	@javax.ws.rs.POST
+			//	@javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+			//	@javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+			//	public String restCallToString(Map<String, Object> data) throws Exception{
+			//		if(Utils.checkParameters(data, "restObjectBase", "properties", "name")){
+			//		   	// se for static
+			//			return Car.toString("properties", "name")
+			//			// se não for static
+			//			Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+			//			return car.toString("properties", "name");
+			//	    }
+			//				
+			//		if(Utils.checkParameters(data, "restObjectBase", "properties")){
+			//	        // se for static
+			//			return Car.toString("properties")
+			//			// se não for static
+			//			Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+			//			return car.toString("properties");
+			//	    }
+			//	    
+			//		throw new Exception("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+			//	}
+			
+			// adiciona o método newDomain
+			MethodDeclaration newMethodRestCall = tdResource.getAST().newMethodDeclaration();
+			// nome do método
+			newMethodRestCall.setName(tdResource.getAST().newSimpleName("restCall"+methodsSameName.get(0).getName().toString()));
+			// flag do método
+			newMethodRestCall.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PUBLIC));
+			// tipo de retorno do método
+			newMethodRestCall.setReturnType2((Type) ASTNode.copySubtree(tdResource.getAST(), methodsSameName.get(0).getReturnType2()));
+			// parâmetro do método
+			// primeiro a declaração da variável
+			SingleVariableDeclaration mapParameter = tdResource.getAST().newSingleVariableDeclaration();
+			mapParameter.setName(tdResource.getAST().newSimpleName("data"));
+			// tipo parametrizado Map<String,Object>
+			ParameterizedType mapPT = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
+			mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
+			mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+			mapParameter.setType(mapPT);
+			newMethodRestCall.parameters().add(mapParameter);
+			// throw declaration na declaração
+			Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
+			newMethodRestCall.thrownExceptionTypes().add(throwException);
+			// corpo
+			Block bodyNewDomainMethod = tdResource.getAST().newBlock(); 
+			// seta o corpo na função
+			newMethodRestCall.setBody(bodyNewDomainMethod);
+			// adiciona a função na classe
+			tdResource.bodyDeclarations().add(0, newMethodRestCall);
 		}
-					// throw dentro do corpo
-					ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
-					ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
-					StringLiteral argumentException = tdResource.getAST().newStringLiteral();
-					argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
-					cicThrowException.arguments().add(argumentException);
-					cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
-					throwNewException.setExpression(cicThrowException);
-					// adiciona o throw no corpo
-					bodyNewDomainMethod.statements().add(0, throwNewException);
-					
-					// vai adicionando os if's para os construtores
-					for(MethodDeclaration constructor : constructors){
-						if(!Modifier.isPrivate(constructor.getFlags())){
-							// inicia o if
-							IfStatement ifConstructor = tdResource.getAST().newIfStatement();
-							
-							// chamada para Utils.checkParameters(data, "param1", "param2", ...)
-							MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
-							utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
-							utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
-							// checkParameters(data..)
-							SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
-							utilsCheckParametersInvocation.arguments().add(dataArgument);
-							// comparação dentro do if
-							ifConstructor.setExpression(utilsCheckParametersInvocation);
-							// chamada para return new Domain(parameters)
-							ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
-							cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
-							ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
-							returnNewDomain.setExpression(cicNewDomain);
-							// seta o corpo do then
-							ifConstructor.setThenStatement(returnNewDomain);
-							
-							// itera pelos parâmetros para adicionar nos argumentos
-							for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
-								StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
-								variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
-								utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
-								
-								// data.get('arg')
-								// arg
-								StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
-								variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
-								// data.get
-								MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
-								dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
-								dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
-								dataGetInvoc.arguments().add(variableStringLiteralReturn);
-								
-								// (Type)data.get('arg')
-								Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
-								CastExpression castArgument = tdResource.getAST().newCastExpression();
-								castArgument.setType(returnTypeArg);
-								castArgument.setExpression(dataGetInvoc);
-								
-								cicNewDomain.arguments().add(castArgument);
-							}
-							
-							bodyNewDomainMethod.statements().add(0, ifConstructor);
-						}
-					}
-				}
-		
+//					// throw dentro do corpo
+//					ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
+//					ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
+//					StringLiteral argumentException = tdResource.getAST().newStringLiteral();
+//					argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+//					cicThrowException.arguments().add(argumentException);
+//					cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
+//					throwNewException.setExpression(cicThrowException);
+//					// adiciona o throw no corpo
+//					bodyNewDomainMethod.statements().add(0, throwNewException);
+//					
+//					// vai adicionando os if's para os construtores
+//					for(MethodDeclaration constructor : constructors){
+//						if(!Modifier.isPrivate(constructor.getFlags())){
+//							// inicia o if
+//							IfStatement ifConstructor = tdResource.getAST().newIfStatement();
+//							
+//							// chamada para Utils.checkParameters(data, "param1", "param2", ...)
+//							MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
+//							utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
+//							utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+//							// checkParameters(data..)
+//							SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+//							utilsCheckParametersInvocation.arguments().add(dataArgument);
+//							// comparação dentro do if
+//							ifConstructor.setExpression(utilsCheckParametersInvocation);
+//							// chamada para return new Domain(parameters)
+//							ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
+//							cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+//							ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
+//							returnNewDomain.setExpression(cicNewDomain);
+//							// seta o corpo do then
+//							ifConstructor.setThenStatement(returnNewDomain);
+//							
+//							// itera pelos parâmetros para adicionar nos argumentos
+//							for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
+//								StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
+//								variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
+//								utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+//								
+//								// data.get('arg')
+//								// arg
+//								StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
+//								variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
+//								// data.get
+//								MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
+//								dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
+//								dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
+//								dataGetInvoc.arguments().add(variableStringLiteralReturn);
+//								
+//								// (Type)data.get('arg')
+//								Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
+//								CastExpression castArgument = tdResource.getAST().newCastExpression();
+//								castArgument.setType(returnTypeArg);
+//								castArgument.setExpression(dataGetInvoc);
+//								
+//								cicNewDomain.arguments().add(castArgument);
+//							}
+//							
+//							bodyNewDomainMethod.statements().add(0, ifConstructor);
+//						}
+//					}
+//				}
+		// salva as alterações realizadas na classe
+		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
 	}
 
 	/**
@@ -1117,7 +1186,8 @@ public class Particionador extends AbstractHandler {
 			// o tipo de Objeto que foi realmente instânciado
 			// senão, a conversão dará problema quando for tentar converter para um
 			// tipo abstract, pois abstract não pode ser instânciado
-			if(!method.isConstructor() && !Modifier.isPrivate(method.getFlags())){
+			if(!method.isConstructor())
+				if(!Modifier.isPrivate(method.getModifiers())){
 				// verifica se o método existe já no map
 				// se não tiver, cria lista
 				List<MethodDeclaration> listMethodsEqual = methods.get(method.getName().toString());
@@ -1320,7 +1390,7 @@ public class Particionador extends AbstractHandler {
 			
 			// vai adicionando os if's para os construtores
 			for(MethodDeclaration constructor : constructors){
-				if(!Modifier.isPrivate(constructor.getFlags())){
+				if(!Modifier.isPrivate(constructor.getModifiers())){
 					// inicia o if
 					IfStatement ifConstructor = tdResource.getAST().newIfStatement();
 					
