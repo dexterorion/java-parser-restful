@@ -54,6 +54,8 @@ import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.ThrowStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
+import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
+import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.MalformedTreeException;
@@ -1193,14 +1195,16 @@ public class Particionador extends AbstractHandler {
 					newDomainMethodInvocationRestObjectBase.arguments().add(castArgument);
 					
 					// Car car ...
-					SingleVariableDeclaration objDeclaration = tdResource.getAST().newSingleVariableDeclaration();
-					objDeclaration.setName(tdResource.getAST().newSimpleName("obj"));
-					objDeclaration.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
-					// Car car = newCar((Map<String, Object>)data.get("restObjectBase")) 
-					objDeclaration.setInitializer(newDomainMethodInvocationRestObjectBase);
+					// car
+					VariableDeclarationFragment vdfObj = tdResource.getAST().newVariableDeclarationFragment();
+					vdfObj.setName(tdResource.getAST().newSimpleName("obj"));
+					vdfObj.setInitializer(newDomainMethodInvocationRestObjectBase);
+					// Car car = newCar((Map<String, Object>)data.get("restObjectBase"))
+					VariableDeclarationStatement vdsObj = tdResource.getAST().newVariableDeclarationStatement(vdfObj);
+					vdsObj.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
 					
 					// adicionando no corpo do if
-					ifBlock.statements().add(0, objDeclaration);
+					ifBlock.statements().add(0, vdsObj);
 					
 					// car.toString(...)
 					// toString(...)
