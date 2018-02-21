@@ -1036,13 +1036,12 @@ public class Particionador extends AbstractHandler {
 		TypeDeclaration tdResource = getTypeDeclaration(cuResource);
 		
 		// recupera os métodos em um Map<String,List<MethodDeclaration>>
-		Map<String, List<MethodDeclaration>> mapMethods = findMethodsGroupedByName(type);
+		Map<String, List<MethodDeclaration>> mapMethods = findMethodsGroupedByNameNoPrivate(type);
 		
 		// verifica todos os metodos, para ir adicionando as chamadas, dentro da função
 		// levando em consideração parâmetros
 		
 		for(Entry<String, List<MethodDeclaration>> entry : mapMethods.entrySet()){
-			String funcionName = "restCall"+entry.getKey();
 			List<MethodDeclaration> methodsSameName = entry.getValue();
 			
 			// são dois tipos de chamadas de método
@@ -1099,75 +1098,55 @@ public class Particionador extends AbstractHandler {
 			Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
 			newMethodRestCall.thrownExceptionTypes().add(throwException);
 			// corpo
-			Block bodyNewDomainMethod = tdResource.getAST().newBlock(); 
+			Block bodyNewMethodRestCall = tdResource.getAST().newBlock(); 
 			// seta o corpo na função
-			newMethodRestCall.setBody(bodyNewDomainMethod);
+			newMethodRestCall.setBody(bodyNewMethodRestCall);
 			// adiciona a função na classe
 			tdResource.bodyDeclarations().add(0, newMethodRestCall);
+			
+			// throw dentro do corpo
+			ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
+			ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
+			StringLiteral argumentException = tdResource.getAST().newStringLiteral();
+			argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+			cicThrowException.arguments().add(argumentException);
+			cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
+			throwNewException.setExpression(cicThrowException);
+			// adiciona o throw no corpo
+			bodyNewMethodRestCall.statements().add(0, throwNewException);
+			
+			// vai adicionando os if's para os métodos
+			for(MethodDeclaration method : methodsSameName){
+				// inicia o if
+				IfStatement ifMethod = tdResource.getAST().newIfStatement();
+				
+				// chamada para Utils.checkParameters(data, "param1", "param2", ...)
+				MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
+				utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
+				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+				// checkParameters(data..)
+				SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+				utilsCheckParametersInvocation.arguments().add(dataArgument);
+				// checkParameters(data, "restObjectBase")
+				StringLiteral restObjectBaseArgument = tdResource.getAST().newStringLiteral();
+				restObjectBaseArgument.setLiteralValue("restObjectBase");
+				utilsCheckParametersInvocation.arguments().add(restObjectBaseArgument);
+				// comparação dentro do if
+				ifMethod.setExpression(utilsCheckParametersInvocation);
+				
+				// itera pelos parâmetros para adicionar nos argumentos
+				for(SingleVariableDeclaration svdMethod : (List<SingleVariableDeclaration>)method.parameters()){
+					StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
+					variableStringLiteralCheckParameter.setLiteralValue(svdMethod.getName().toString());
+					utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+				}
+				
+				bodyNewMethodRestCall.statements().add(0, ifMethod);
+				
+				
+			}
 		}
-//					// throw dentro do corpo
-//					ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
-//					ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
-//					StringLiteral argumentException = tdResource.getAST().newStringLiteral();
-//					argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
-//					cicThrowException.arguments().add(argumentException);
-//					cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
-//					throwNewException.setExpression(cicThrowException);
-//					// adiciona o throw no corpo
-//					bodyNewDomainMethod.statements().add(0, throwNewException);
-//					
-//					// vai adicionando os if's para os construtores
-//					for(MethodDeclaration constructor : constructors){
-//						if(!Modifier.isPrivate(constructor.getFlags())){
-//							// inicia o if
-//							IfStatement ifConstructor = tdResource.getAST().newIfStatement();
-//							
-//							// chamada para Utils.checkParameters(data, "param1", "param2", ...)
-//							MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
-//							utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
-//							utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
-//							// checkParameters(data..)
-//							SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
-//							utilsCheckParametersInvocation.arguments().add(dataArgument);
-//							// comparação dentro do if
-//							ifConstructor.setExpression(utilsCheckParametersInvocation);
-//							// chamada para return new Domain(parameters)
-//							ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
-//							cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
-//							ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
-//							returnNewDomain.setExpression(cicNewDomain);
-//							// seta o corpo do then
-//							ifConstructor.setThenStatement(returnNewDomain);
-//							
-//							// itera pelos parâmetros para adicionar nos argumentos
-//							for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
-//								StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
-//								variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
-//								utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
-//								
-//								// data.get('arg')
-//								// arg
-//								StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
-//								variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
-//								// data.get
-//								MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
-//								dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
-//								dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
-//								dataGetInvoc.arguments().add(variableStringLiteralReturn);
-//								
-//								// (Type)data.get('arg')
-//								Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
-//								CastExpression castArgument = tdResource.getAST().newCastExpression();
-//								castArgument.setType(returnTypeArg);
-//								castArgument.setExpression(dataGetInvoc);
-//								
-//								cicNewDomain.arguments().add(castArgument);
-//							}
-//							
-//							bodyNewDomainMethod.statements().add(0, ifConstructor);
-//						}
-//					}
-//				}
+					
 		// salva as alterações realizadas na classe
 		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
 	}
@@ -1177,7 +1156,7 @@ public class Particionador extends AbstractHandler {
 	 * @param type Retorna um Map contém a dupla Nome do método : Lista de métodos com o mesmo nome
 	 * @return
 	 */
-	private Map<String, List<MethodDeclaration>> findMethodsGroupedByName(TypeDeclaration type) {
+	private Map<String, List<MethodDeclaration>> findMethodsGroupedByNameNoPrivate(TypeDeclaration type) {
 		Map<String, List<MethodDeclaration>> methods = new HashMap<String, List<MethodDeclaration>>();
 		
 		for(MethodDeclaration method : type.getMethods()){
