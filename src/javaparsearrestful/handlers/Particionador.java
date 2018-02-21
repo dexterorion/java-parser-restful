@@ -1,5 +1,6 @@
 package javaparsearrestful.handlers;
 
+import java.beans.Statement;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
@@ -32,6 +33,7 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.CastExpression;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
@@ -1134,11 +1136,102 @@ public class Particionador extends AbstractHandler {
 				// comparação dentro do if
 				ifMethod.setExpression(utilsCheckParametersInvocation);
 				
+				MethodInvocation invocationMethod = tdResource.getAST().newMethodInvocation();
+				
+				Block ifBlock = tdResource.getAST().newBlock();
+				ifMethod.setThenStatement(ifBlock);
+				
+				// tem que verificar se tem retorno
+				if(method.getReturnType2().toString().contentEquals(org.eclipse.jdt.core.dom.PrimitiveType.VOID.toString())){
+					ifBlock.statements().add(tdResource.getAST().newExpressionStatement(invocationMethod));
+				}
+				else{
+					// return methodInvocation
+					ReturnStatement returnMethodInvocationRestObjectBase = tdResource.getAST().newReturnStatement();
+					returnMethodInvocationRestObjectBase.setExpression(invocationMethod);
+					ifBlock.statements().add(returnMethodInvocationRestObjectBase);
+				}
+				
+				// // se for static
+				// return Car.toString("properties", "name")
+				if(Modifier.isStatic(method.getModifiers())){
+					// Car.toString(...)
+					// toString(...)
+					invocationMethod.setName(tdResource.getAST().newSimpleName(method.getName().toString()));
+					// Car.
+					invocationMethod.setExpression(tdResource.getAST().newSimpleName(clazz.getElementName()));
+				}
+				// // se não for static
+				// Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+				// return car.toString("properties", "name");
+				else{
+					// newCar((Map<String, Object>)data.get("restObjectBase"))
+					// data.get('restObjectBase')
+					// restObjectBase
+					StringLiteral variableStringLiteralRestObjectBase = tdResource.getAST().newStringLiteral();
+					variableStringLiteralRestObjectBase.setLiteralValue("restObjectBase");
+					// data.get
+					MethodInvocation dataGetInvocRestObjectBase = tdResource.getAST().newMethodInvocation();
+					dataGetInvocRestObjectBase.setName(tdResource.getAST().newSimpleName("get"));
+					dataGetInvocRestObjectBase.setExpression(tdResource.getAST().newName("data"));
+					dataGetInvocRestObjectBase.arguments().add(variableStringLiteralRestObjectBase);
+					
+					// (Map<String, Object>)data.get("restObjectBase")
+					// tipo parametrizado Map<String,Object>
+					ParameterizedType ptRestObjectBase = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
+					ptRestObjectBase.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
+					ptRestObjectBase.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+					// (Map<String, Object>)data.get("restObjectBase")
+					CastExpression castArgument = tdResource.getAST().newCastExpression();
+					castArgument.setType(ptRestObjectBase);
+					castArgument.setExpression(dataGetInvocRestObjectBase);
+					
+					// newCar(..)
+					MethodInvocation newDomainMethodInvocationRestObjectBase = tdResource.getAST().newMethodInvocation();
+					newDomainMethodInvocationRestObjectBase.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
+					// newCar((Map<String, Object>)data.get("restObjectBase"))
+					newDomainMethodInvocationRestObjectBase.arguments().add(castArgument);
+					
+					// Car car ...
+					SingleVariableDeclaration objDeclaration = tdResource.getAST().newSingleVariableDeclaration();
+					objDeclaration.setName(tdResource.getAST().newSimpleName("obj"));
+					objDeclaration.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+					// Car car = newCar((Map<String, Object>)data.get("restObjectBase")) 
+					objDeclaration.setInitializer(newDomainMethodInvocationRestObjectBase);
+					
+					// adicionando no corpo do if
+					ifBlock.statements().add(0, objDeclaration);
+					
+					// car.toString(...)
+					// toString(...)
+					invocationMethod.setName(tdResource.getAST().newSimpleName(method.getName().toString()));
+					// car.
+					invocationMethod.setExpression(tdResource.getAST().newSimpleName("obj"));
+				}
+				
 				// itera pelos parâmetros para adicionar nos argumentos
 				for(SingleVariableDeclaration svdMethod : (List<SingleVariableDeclaration>)method.parameters()){
 					StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
 					variableStringLiteralCheckParameter.setLiteralValue(svdMethod.getName().toString());
 					utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+					
+					// data.get('arg')
+					// arg
+					StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
+					variableStringLiteralReturn.setLiteralValue(svdMethod.getName().toString());
+					// data.get
+					MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
+					dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
+					dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
+					dataGetInvoc.arguments().add(variableStringLiteralReturn);
+					
+					// (Type)data.get('arg')
+					Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdMethod.getType());
+					CastExpression castArgument = tdResource.getAST().newCastExpression();
+					castArgument.setType(returnTypeArg);
+					castArgument.setExpression(dataGetInvoc);
+					
+					invocationMethod.arguments().add(castArgument);
 				}
 				
 				bodyNewMethodRestCall.statements().add(0, ifMethod);
