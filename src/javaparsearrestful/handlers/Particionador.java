@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Scanner;
 
 import org.eclipse.core.commands.AbstractHandler;
@@ -23,7 +24,6 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.IType;
@@ -33,20 +33,20 @@ import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.Block;
-import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.CastExpression;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
+import org.eclipse.jdt.core.dom.MarkerAnnotation;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
-import org.eclipse.jdt.core.dom.NormalAnnotation;
+import org.eclipse.jdt.core.dom.Name;
 import org.eclipse.jdt.core.dom.ParameterizedType;
 import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SimpleType;
+import org.eclipse.jdt.core.dom.SingleMemberAnnotation;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.ThrowStatement;
@@ -929,7 +929,7 @@ public class Particionador extends AbstractHandler {
 	 * @param simpleMethod
 	 */
 	private void addJsonIgnoreSimpleMethod(MethodDeclaration simpleMethod) {
-		NormalAnnotation annotation = simpleMethod.getAST().newNormalAnnotation();
+		MarkerAnnotation annotation = simpleMethod.getAST().newMarkerAnnotation();
 		annotation.setTypeName(simpleMethod.getAST().newName("JsonIgnore"));
 		simpleMethod.modifiers().add(0, annotation);
 	}
@@ -961,7 +961,7 @@ public class Particionador extends AbstractHandler {
 	 * @param constructor
 	 */
 //	private void addJsonCreatorConstructor(MethodDeclaration constructor) {
-//		NormalAnnotation annotation = constructor.getAST().newNormalAnnotation();
+//		MarkerAnnotation annotation = constructor.getAST().newMarkerAnnotation();
 //		annotation.setTypeName(constructor.getAST().newName("JsonCreator"));
 //		constructor.modifiers().add(0, annotation);
 //	}
@@ -1009,11 +1009,215 @@ public class Particionador extends AbstractHandler {
 		createNewDomainFunctionSimpleType(clazz, type);
 		
 		// depois, cria a função get
+		createGetDomainFunctionSimpleType(clazz, type);
 		
 		// depois, cria as entradas respectivas para cada função
+		createMethodsEntriesSimpleType(clazz, type);
 		
 		// por último, atualiza todos os imports
 		updateResourceImports(clazz, type);
+	}
+
+	/**
+	 * Função para iterar sobre os métodos públicos e protegidos da classe e criar as entradas para os mesmos
+	 * para as chamadas REST
+	 * @param clazz
+	 * @param type
+	 */
+	private void createMethodsEntriesSimpleType(IType clazz, TypeDeclaration type) {
+		// recupera os métodos em um Map<String,List<MethodDeclaration>>
+		Map<String, List<MethodDeclaration>> mapMethods = findMethodsGroupedByName(type);
+		
+		// verifica todos os metodos, para ir adicionando as chamadas, dentro da função
+		// levando em consideração parâmetros
+		
+		for(Entry<String, List<MethodDeclaration>> entry : mapMethods.entrySet()){
+			String funcionName = "restCall"+entry.getKey();
+			List<MethodDeclaration> methodsSameName = entry.getValue();
+			
+			
+		}
+					// throw dentro do corpo
+					ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
+					ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
+					StringLiteral argumentException = tdResource.getAST().newStringLiteral();
+					argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+					cicThrowException.arguments().add(argumentException);
+					cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
+					throwNewException.setExpression(cicThrowException);
+					// adiciona o throw no corpo
+					bodyNewDomainMethod.statements().add(0, throwNewException);
+					
+					// vai adicionando os if's para os construtores
+					for(MethodDeclaration constructor : constructors){
+						if(!Modifier.isPrivate(constructor.getFlags())){
+							// inicia o if
+							IfStatement ifConstructor = tdResource.getAST().newIfStatement();
+							
+							// chamada para Utils.checkParameters(data, "param1", "param2", ...)
+							MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
+							utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
+							utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+							// checkParameters(data..)
+							SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+							utilsCheckParametersInvocation.arguments().add(dataArgument);
+							// comparação dentro do if
+							ifConstructor.setExpression(utilsCheckParametersInvocation);
+							// chamada para return new Domain(parameters)
+							ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
+							cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+							ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
+							returnNewDomain.setExpression(cicNewDomain);
+							// seta o corpo do then
+							ifConstructor.setThenStatement(returnNewDomain);
+							
+							// itera pelos parâmetros para adicionar nos argumentos
+							for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
+								StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
+								variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
+								utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+								
+								// data.get('arg')
+								// arg
+								StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
+								variableStringLiteralReturn.setLiteralValue(svdConstructor.getName().toString());
+								// data.get
+								MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
+								dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
+								dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
+								dataGetInvoc.arguments().add(variableStringLiteralReturn);
+								
+								// (Type)data.get('arg')
+								Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdConstructor.getType());
+								CastExpression castArgument = tdResource.getAST().newCastExpression();
+								castArgument.setType(returnTypeArg);
+								castArgument.setExpression(dataGetInvoc);
+								
+								cicNewDomain.arguments().add(castArgument);
+							}
+							
+							bodyNewDomainMethod.statements().add(0, ifConstructor);
+						}
+					}
+				}
+		
+	}
+
+	/**
+	 * 
+	 * @param type Retorna um Map contém a dupla Nome do método : Lista de métodos com o mesmo nome
+	 * @return
+	 */
+	private Map<String, List<MethodDeclaration>> findMethodsGroupedByName(TypeDeclaration type) {
+		Map<String, List<MethodDeclaration>> methods = new HashMap<String, List<MethodDeclaration>>();
+		
+		for(MethodDeclaration method : type.getMethods()){
+			// se não for construtor e não for private 
+			// lembrar que as chamadas vão utilizar 'reflection', pois descobre-se qual
+			// o tipo de Objeto que foi realmente instânciado
+			// senão, a conversão dará problema quando for tentar converter para um
+			// tipo abstract, pois abstract não pode ser instânciado
+			if(!method.isConstructor() && !Modifier.isPrivate(method.getFlags())){
+				// verifica se o método existe já no map
+				// se não tiver, cria lista
+				List<MethodDeclaration> listMethodsEqual = methods.get(method.getName().toString());
+				if(listMethodsEqual == null){
+					listMethodsEqual = new ArrayList<MethodDeclaration>();
+				}
+				
+				listMethodsEqual.add(method);
+				methods.put(method.getName().toString(), listMethodsEqual);
+			}
+		}
+		
+		return methods;
+	}
+
+	/**
+	 * Cria a função getDomain no resource
+	 * @param clazz
+	 * @param type
+	 * @throws BadLocationException 
+	 * @throws JavaModelException 
+	 * @throws MalformedTreeException 
+	 */
+	private void createGetDomainFunctionSimpleType(IType clazz, TypeDeclaration type) throws MalformedTreeException, JavaModelException, BadLocationException {
+		IType resourceDomain = resourcesJavaClasses.get(clazz);
+		
+		Document resourceDocument = getDocumentCompilationUnit(resourceDomain);
+		
+		CompilationUnit cuResource = getCompilationUnit(resourceDomain);
+		TypeDeclaration tdResource = getTypeDeclaration(cuResource);
+		
+		// adiciona o método getDomain
+		MethodDeclaration getDomainMethod = tdResource.getAST().newMethodDeclaration();
+		// nome do método
+		getDomainMethod.setName(tdResource.getAST().newSimpleName("get"+clazz.getElementName()));
+		// flag do método
+		getDomainMethod.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PRIVATE));
+		// tipo de retorno do método
+		getDomainMethod.setReturnType2(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+		// parâmetro do método
+		// primeiro a declaração da variável
+		SingleVariableDeclaration mapParameter = tdResource.getAST().newSingleVariableDeclaration();
+		mapParameter.setName(tdResource.getAST().newSimpleName("data"));
+		// tipo parametrizado Map<String,Object>
+		ParameterizedType mapPT = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
+		mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
+		mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+		mapParameter.setType(mapPT);
+		getDomainMethod.parameters().add(mapParameter);
+		// throw declaration na declaração
+		Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
+		getDomainMethod.thrownExceptionTypes().add(throwException);
+		// corpo
+		Block bodyGetDomainMethod = tdResource.getAST().newBlock(); 
+		// seta o corpo na função
+		getDomainMethod.setBody(bodyGetDomainMethod);
+		// adiciona a função na classe
+		tdResource.bodyDeclarations().add(0, getDomainMethod);
+		
+		// adiciona return newDomain(data)
+		ReturnStatement returnNewDomain = tdResource.getAST().newReturnStatement();
+		// newDomain(data)
+		// newDomain(..)
+		MethodInvocation newDomainMethodCall = tdResource.getAST().newMethodInvocation();
+		newDomainMethodCall.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
+		// newDomain(data)
+		SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+		newDomainMethodCall.arguments().add(dataArgument);
+		// return newDomain(data)
+		returnNewDomain.setExpression(newDomainMethodCall);
+		
+		bodyGetDomainMethod.statements().add(returnNewDomain);
+		
+		// adiciona os annotation
+		// @javax.ws.rs.Path("get")
+		SingleMemberAnnotation annotationPath = tdResource.getAST().newSingleMemberAnnotation();
+		annotationPath.setTypeName(tdResource.getAST().newName("javax.ws.rs.Path"));
+		StringLiteral getSLPath = tdResource.getAST().newStringLiteral();
+		getSLPath.setLiteralValue("get");
+		annotationPath.setValue(getSLPath);
+		getDomainMethod.modifiers().add(0, annotationPath); 
+	    // @javax.ws.rs.POST
+		MarkerAnnotation annotationPost = tdResource.getAST().newMarkerAnnotation();
+		annotationPost.setTypeName(tdResource.getAST().newName("javax.ws.rs.POST"));
+		getDomainMethod.modifiers().add(0, annotationPost);
+	    // @javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+		SingleMemberAnnotation annotationProduces = tdResource.getAST().newSingleMemberAnnotation();
+		annotationProduces.setTypeName(tdResource.getAST().newName("javax.ws.rs.Produces"));
+		Name nameAppJSONProduces = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+		annotationProduces.setValue(nameAppJSONProduces);
+		getDomainMethod.modifiers().add(0, annotationProduces);
+	    // @javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+		SingleMemberAnnotation annotationConsumes = tdResource.getAST().newSingleMemberAnnotation();
+		annotationConsumes.setTypeName(tdResource.getAST().newName("javax.ws.rs.Consumes"));
+		Name nameAppJSONConsumes = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+		annotationConsumes.setValue(nameAppJSONConsumes);
+		getDomainMethod.modifiers().add(0, annotationConsumes);
+		
+		// salva as alterações realizadas na classe
+		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
 	}
 
 	/**
