@@ -33,6 +33,7 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.ArrayType;
 import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.CastExpression;
@@ -54,6 +55,7 @@ import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.ThrowStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
+import org.eclipse.jdt.core.dom.TypeParameter;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jface.text.BadLocationException;
@@ -1016,10 +1018,21 @@ public class Particionador extends AbstractHandler {
 		createGetDomainFunctionSimpleType(clazz, type);
 		
 		// depois, cria as entradas respectivas para cada função
-		createMethodsEntriesSimpleType(clazz, type);
+//		createMethodsEntriesSimpleType(clazz, type);
+		createMethodsResourceSimpleType(clazz, type);
 		
 		// por último, atualiza todos os imports
 		updateResourceImports(clazz, type);
+	}
+
+	/**
+	 * 
+	 * @param clazz
+	 * @param type
+	 */
+	private void createMethodsResourceSimpleType(IType clazz, TypeDeclaration type) {
+		// TODO Auto-generated method stub
+		
 	}
 
 	/**
@@ -1084,6 +1097,12 @@ public class Particionador extends AbstractHandler {
 			MethodDeclaration newMethodRestCall = tdResource.getAST().newMethodDeclaration();
 			// nome do método
 			newMethodRestCall.setName(tdResource.getAST().newSimpleName("restCall"+methodsSameName.get(0).getName().toString()));
+			
+			// atualiza o typeParameter da função
+			for(TypeParameter tp : (List<TypeParameter>) methodsSameName.get(0).typeParameters()){
+				newMethodRestCall.typeParameters().add((TypeParameter) ASTNode.copySubtree(tdResource.getAST(), tp));
+			}
+			
 			// flag do método
 			newMethodRestCall.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PUBLIC));
 			// tipo de retorno do método
@@ -1230,7 +1249,16 @@ public class Particionador extends AbstractHandler {
 					dataGetInvoc.arguments().add(variableStringLiteralReturn);
 					
 					// (Type)data.get('arg')
-					Type returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdMethod.getType());
+					Type returnTypeArg;
+					if(svdMethod.getExtraDimensions() > 0){
+						Type typeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdMethod.getType());
+						ArrayType arrayReturnTypeArg = tdResource.getAST().newArrayType(typeArg, svdMethod.getExtraDimensions());
+						returnTypeArg = arrayReturnTypeArg;
+					}
+					else{
+						returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdMethod.getType());
+					}
+					
 					CastExpression castArgument = tdResource.getAST().newCastExpression();
 					castArgument.setType(returnTypeArg);
 					castArgument.setExpression(dataGetInvoc);
@@ -1408,6 +1436,11 @@ public class Particionador extends AbstractHandler {
 		
 		CompilationUnit cuResource = getCompilationUnit(resourceDomain);
 		TypeDeclaration tdResource = getTypeDeclaration(cuResource);
+		
+		// atualiza typeParameters (teste)
+		for(TypeParameter tp : (List<TypeParameter>) typeClazz.typeParameters()){
+			tdResource.typeParameters().add((TypeParameter) ASTNode.copySubtree(tdResource.getAST(), tp));
+		}
 		
 		// adiciona o método newDomain
 		MethodDeclaration newDomainMethod = tdResource.getAST().newMethodDeclaration();
