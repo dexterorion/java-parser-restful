@@ -41,6 +41,8 @@ import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
+import org.eclipse.jdt.core.dom.InfixExpression;
+import org.eclipse.jdt.core.dom.InfixExpression.Operator;
 import org.eclipse.jdt.core.dom.MarkerAnnotation;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
@@ -212,6 +214,62 @@ public class Particionador extends AbstractHandler {
 	}
 	
 	/**
+	 * Cria os arquivos de manager base, linkados com os arquivos das Domain
+	 * @param javaProject
+	 * @throws CoreException 
+	 */
+	private void createManagerSimpleType(IJavaProject javaProject) throws CoreException {
+		for(IType clazz : javaClasses){
+			// salva um link entre a classe e o resource
+			managersJavaClasses.put(clazz, createManagerJava(javaProject, clazz, clazz.getElementName()));
+		}
+		
+		javaProject.getProject().getWorkspace().save(true,null);
+	}
+	
+	/**
+	 * Cria o arquivo DomainManager.java, contendo a base para o resource
+	 * @param newProject
+	 * @throws CoreException 
+	 */
+	private IType createManagerJava(IJavaProject javaProject, IType clazz, String domainName) throws CoreException {
+		// cria o manager relativo ao clazz no package manager e retorna
+		String managerString = createManagerContentBasis(clazz, domainName);
+		ICompilationUnit managerCu = clazz.getPackageFragment().createCompilationUnit(domainName+"Manager.java", managerString, true, null);
+		clazz.getPackageFragment().makeConsistent(null);
+		return managerCu.getType(domainName+"Manager");
+	}
+
+	/**
+	 * Cria a string contendo o corpo do manager 
+	 * @param domainName
+	 * @return String
+	 */
+	private String createManagerContentBasis(IType clazz, String domainName) {
+		StringBuilder managerBuilder = new StringBuilder();
+		managerBuilder.append("package "+clazz.getPackageFragment().getElementName()+";\n");
+		managerBuilder.append("\n");
+		managerBuilder.append("import java.io.BufferedReader;\n");
+		managerBuilder.append("import java.io.IOException;\n");
+		managerBuilder.append("import java.io.InputStreamReader;\n");
+		managerBuilder.append("import java.io.UnsupportedEncodingException;\n");
+		managerBuilder.append("import java.util.HashMap;\n");
+		managerBuilder.append("import java.util.Map;\n");
+		managerBuilder.append("\n");
+		managerBuilder.append("import org.apache.http.HttpResponse;\n");
+		managerBuilder.append("import org.apache.http.client.methods.HttpPost;\n");
+		managerBuilder.append("import org.apache.http.entity.StringEntity;\n");
+		managerBuilder.append("import org.apache.http.impl.client.DefaultHttpClient;\n");
+		managerBuilder.append("import com.google.gson.Gson;\n");
+		managerBuilder.append("\n");
+		managerBuilder.append("import "+clazz.getFullyQualifiedName()+";\n");
+		managerBuilder.append("\n");
+		managerBuilder.append("public class "+clazz.getElementName()+"Manager {\n");
+		managerBuilder.append("}\n");
+		return managerBuilder.toString();
+	}
+
+	/**
 	 * Cria os arquivos de resource base, linkados com os arquivos das Domain
 	 * @param javaProject
 	 * @throws CoreException 
@@ -255,15 +313,6 @@ public class Particionador extends AbstractHandler {
 		resourceBuilder.append("public class "+clazz.getElementName()+"Resource {\n");
 		resourceBuilder.append("}\n");
 		return resourceBuilder.toString();
-	}
-
-	/**
-	 * Cria os arquivos de manager base, linkados com os arquivos das Domain
-	 * @param javaProject
-	 */
-	private void createManagerSimpleType(IJavaProject javaProject) {
-		// TODO Auto-generated method stub
-		
 	}
 
 	/**
@@ -483,6 +532,11 @@ public class Particionador extends AbstractHandler {
 		utilsString.append("	public static Boolean checkParameters(Map<String, Object> data, String ... keys){\n");
 		utilsString.append("		return data.keySet().containsAll(Arrays.asList(keys));\n");
 		utilsString.append("	}\n");
+		utilsString.append("\n");
+		utilsString.append("	public static Boolean checkToken(String restToken, String token){\n");
+		utilsString.append("		return restToken.contentEquals(token);\n");
+		utilsString.append("	}\n");
+		utilsString.append("\n");
 		utilsString.append("	public static Boolean isJSONValid(String jsonInString){\n");
 		utilsString.append("		try {\n");
 		utilsString.append("	          gson.fromJson(jsonInString, Object.class);\n");
@@ -1620,7 +1674,7 @@ public class Particionador extends AbstractHandler {
 		// newDomain(..)
 		MethodInvocation newDomainMethodCall = tdResource.getAST().newMethodInvocation();
 		newDomainMethodCall.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
-		// newDomain(data)
+		// newDomain(data.get('restObjectBase'), data.get('token'))
 		SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
 		newDomainMethodCall.arguments().add(dataArgument);
 		// return newDomain(data)
@@ -1775,8 +1829,39 @@ public class Particionador extends AbstractHandler {
 					// checkParameters(data..)
 					SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
 					utilsCheckParametersInvocation.arguments().add(dataArgument);
+					// checkParameters(data, "restTokenConstructor",...)
+					StringLiteral restTokenArgument = tdResource.getAST().newStringLiteral();
+					restTokenArgument.setLiteralValue("restTokenConstructor");
+					utilsCheckParametersInvocation.arguments().add(restTokenArgument);
 					// comparação dentro do if
-					ifConstructor.setExpression(utilsCheckParametersInvocation);
+					
+					// chamada para Utils.checkToken(data.get("restTokenConstructor"), "tokenGeradoNomeParametros")
+					MethodInvocation utilsCheckTokenInvocation = tdResource.getAST().newMethodInvocation();
+					utilsCheckTokenInvocation.setName(tdResource.getAST().newSimpleName("checkToken"));
+					utilsCheckTokenInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+					// data.get("restTokenConstructor")
+					MethodInvocation dataGetInvocationToken = tdResource.getAST().newMethodInvocation();
+					dataGetInvocationToken.setExpression(tdResource.getAST().newSimpleName("data"));
+					dataGetInvocationToken.setName(tdResource.getAST().newSimpleName("get"));
+					// "restoToken"
+					StringLiteral restTokenArgumentCheckToken = tdResource.getAST().newStringLiteral();
+					restTokenArgumentCheckToken.setLiteralValue("restTokenConstructor");
+					// data.get("restTokenConstructor")
+					dataGetInvocationToken.arguments().add(restTokenArgumentCheckToken);
+
+					// (String)data.get("restTokenConstructor")
+					CastExpression castDataGetInvocationToken = tdResource.getAST().newCastExpression();
+					castDataGetInvocationToken.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("String")));
+					castDataGetInvocationToken.setExpression(dataGetInvocationToken);
+					
+					// checkParameters(data, "restTokenConstructor",...) && Utils.checkToken(data.get('restToken'),tokenGerado)
+					
+					InfixExpression infixIfChecks = tdResource.getAST().newInfixExpression();
+					infixIfChecks.setOperator(Operator.CONDITIONAL_AND);
+					infixIfChecks.setLeftOperand(utilsCheckParametersInvocation);
+					infixIfChecks.setRightOperand(utilsCheckTokenInvocation);
+					
+					ifConstructor.setExpression(infixIfChecks);
 					// chamada para return new Domain(parameters)
 					ClassInstanceCreation cicNewDomain = tdResource.getAST().newClassInstanceCreation();
 					cicNewDomain.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
@@ -1785,8 +1870,13 @@ public class Particionador extends AbstractHandler {
 					// seta o corpo do then
 					ifConstructor.setThenStatement(returnNewDomain);
 					
+					// token gerado a partir dos nomes dos parâmetros
+					StringBuilder tokenGeradoTipoParametros = new StringBuilder();
+					
 					// itera pelos parâmetros para adicionar nos argumentos
 					for(SingleVariableDeclaration svdConstructor : (List<SingleVariableDeclaration>)constructor.parameters()){
+						tokenGeradoTipoParametros.append(svdConstructor.getType().toString());
+						
 						StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
 						variableStringLiteralCheckParameter.setLiteralValue(svdConstructor.getName().toString());
 						utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
@@ -1809,6 +1899,12 @@ public class Particionador extends AbstractHandler {
 						
 						cicNewDomain.arguments().add(castArgument);
 					}
+					
+					// "token gerado" e Utils.checkToken(data.get('restToken'),tokenGerado)
+					StringLiteral generatedTokenArgumentCheckToken = tdResource.getAST().newStringLiteral();
+					generatedTokenArgumentCheckToken.setLiteralValue(tokenGeradoTipoParametros.toString());
+					utilsCheckTokenInvocation.arguments().add(castDataGetInvocationToken);
+					utilsCheckTokenInvocation.arguments().add(generatedTokenArgumentCheckToken);
 					
 					bodyNewDomainMethod.statements().add(0, ifConstructor);
 				}
