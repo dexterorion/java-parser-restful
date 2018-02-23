@@ -1072,8 +1072,8 @@ public class Particionador extends AbstractHandler {
 		createGetDomainFunctionSimpleType(clazz, type);
 		
 		// depois, cria as entradas respectivas para cada função
-//		createMethodsEntriesSimpleType(clazz, type); // cria um metodo para todos os com mesmo nome - TODO: FALTA ARRUMAR O TIPO DE RETORNO SER OBJECT, E CRIAR UM CHECKTYPES PARA CHECAR O TIPO DE CADA PARAMETRO
-		createMethodsResourceSimpleType(clazz, type); // cria um metodo para cada funcao, mesmo as com mesmo nome
+		createMethodsEntriesSimpleType(clazz, type); // cria um metodo para todos os com mesmo nome - TODO: FALTA ARRUMAR O TIPO DE RETORNO SER OBJECT, E CRIAR UM CHECKTYPES PARA CHECAR O TIPO DE CADA PARAMETRO
+//		createMethodsResourceSimpleType(clazz, type); // cria um metodo para cada funcao, mesmo as com mesmo nome
 		
 		// por último, atualiza todos os imports
 		updateResourceImports(clazz, type);
@@ -1387,7 +1387,8 @@ public class Particionador extends AbstractHandler {
 			//	@javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
 			//	@javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
 			//	public String restCallToString(Map<String, Object> data) throws Exception{
-			//		if(Utils.checkParameters(data, "restObjectBase", "properties", "name")){
+			//		if(Utils.checkParameters(data, "restObjectBase", "restTokenFunction", "properties", "name")
+			//			&& Utils.checkToken(data.get("restTokenFunction"), tokenGerado)){
 			//		   	// se for static
 			//			return Car.toString("properties", "name")
 			//			// se não for static
@@ -1395,7 +1396,8 @@ public class Particionador extends AbstractHandler {
 			//			return car.toString("properties", "name");
 			//	    }
 			//				
-			//		if(Utils.checkParameters(data, "restObjectBase", "properties")){
+			//		if(Utils.checkParameters(data, "restObjectBase", "restTokenFunction", "properties")
+			//			&& Utils.checkToken(data.get("restTokenFunction"), tokenGerado)){
 			//	        // se for static
 			//			return Car.toString("properties")
 			//			// se não for static
@@ -1453,6 +1455,31 @@ public class Particionador extends AbstractHandler {
 			// adiciona o throw no corpo
 			bodyNewMethodRestCall.statements().add(0, throwNewException);
 			
+			// adiciona os annotation
+			// @javax.ws.rs.Path("nomeChamada")
+			SingleMemberAnnotation annotationPath = tdResource.getAST().newSingleMemberAnnotation();
+			annotationPath.setTypeName(tdResource.getAST().newName("javax.ws.rs.Path"));
+			StringLiteral getSLPath = tdResource.getAST().newStringLiteral();
+			getSLPath.setLiteralValue(methodsSameName.get(0).getName().toString());
+			annotationPath.setValue(getSLPath);
+			newMethodRestCall.modifiers().add(0, annotationPath); 
+		    // @javax.ws.rs.POST
+			MarkerAnnotation annotationPost = tdResource.getAST().newMarkerAnnotation();
+			annotationPost.setTypeName(tdResource.getAST().newName("javax.ws.rs.POST"));
+			newMethodRestCall.modifiers().add(0, annotationPost);
+		    // @javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+			SingleMemberAnnotation annotationProduces = tdResource.getAST().newSingleMemberAnnotation();
+			annotationProduces.setTypeName(tdResource.getAST().newName("javax.ws.rs.Produces"));
+			Name nameAppJSONProduces = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+			annotationProduces.setValue(nameAppJSONProduces);
+			newMethodRestCall.modifiers().add(0, annotationProduces);
+		    // @javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+			SingleMemberAnnotation annotationConsumes = tdResource.getAST().newSingleMemberAnnotation();
+			annotationConsumes.setTypeName(tdResource.getAST().newName("javax.ws.rs.Consumes"));
+			Name nameAppJSONConsumes = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+			annotationConsumes.setValue(nameAppJSONConsumes);
+			newMethodRestCall.modifiers().add(0, annotationConsumes);
+			
 			// vai adicionando os if's para os métodos
 			for(MethodDeclaration method : methodsSameName){
 				// inicia o if
@@ -1469,8 +1496,40 @@ public class Particionador extends AbstractHandler {
 				StringLiteral restObjectBaseArgument = tdResource.getAST().newStringLiteral();
 				restObjectBaseArgument.setLiteralValue("restObjectBase");
 				utilsCheckParametersInvocation.arguments().add(restObjectBaseArgument);
+				// checkParameters(data, "restObjectBase", "restTokenFunction")
+				StringLiteral restTokenFunctionArgument = tdResource.getAST().newStringLiteral();
+				restTokenFunctionArgument.setLiteralValue("restTokenFunction");
+				utilsCheckParametersInvocation.arguments().add(restTokenFunctionArgument);
+				
+				// chamada para Utils.checkToken(data.get("restTokenConstructor"), "tokenGeradoNomeParametros")
+				MethodInvocation utilsCheckTokenInvocation = tdResource.getAST().newMethodInvocation();
+				utilsCheckTokenInvocation.setName(tdResource.getAST().newSimpleName("checkToken"));
+				utilsCheckTokenInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+				// data.get("restTokenConstructor")
+				MethodInvocation dataGetInvocationToken = tdResource.getAST().newMethodInvocation();
+				dataGetInvocationToken.setExpression(tdResource.getAST().newSimpleName("data"));
+				dataGetInvocationToken.setName(tdResource.getAST().newSimpleName("get"));
+				// "restoToken"
+				StringLiteral restTokenArgumentCheckToken = tdResource.getAST().newStringLiteral();
+				restTokenArgumentCheckToken.setLiteralValue("restTokenFunction");
+				// data.get("restTokenFunction")
+				dataGetInvocationToken.arguments().add(restTokenArgumentCheckToken);
+
+				// (String)data.get("restTokenFunction")
+				CastExpression castDataGetInvocationToken = tdResource.getAST().newCastExpression();
+				castDataGetInvocationToken.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("String")));
+				castDataGetInvocationToken.setExpression(dataGetInvocationToken);
+				
+				// checkParameters(data, "restTokenConstructor",...) && Utils.checkToken(data.get('restTokenFunction'),tokenGerado)
+				
+				InfixExpression infixIfChecks = tdResource.getAST().newInfixExpression();
+				infixIfChecks.setOperator(Operator.CONDITIONAL_AND);
+				infixIfChecks.setLeftOperand(utilsCheckParametersInvocation);
+				infixIfChecks.setRightOperand(utilsCheckTokenInvocation);
+				
+				
 				// comparação dentro do if
-				ifMethod.setExpression(utilsCheckParametersInvocation);
+				ifMethod.setExpression(infixIfChecks);
 				
 				MethodInvocation invocationMethod = tdResource.getAST().newMethodInvocation();
 				
@@ -1547,8 +1606,12 @@ public class Particionador extends AbstractHandler {
 					invocationMethod.setExpression(tdResource.getAST().newSimpleName("obj"));
 				}
 				
+				// token gerado a partir dos nomes dos parâmetros
+				StringBuilder tokenGeradoTipoParametros = new StringBuilder();
+				
 				// itera pelos parâmetros para adicionar nos argumentos
 				for(SingleVariableDeclaration svdMethod : (List<SingleVariableDeclaration>)method.parameters()){
+					tokenGeradoTipoParametros.append(svdMethod.getType().toString());
 					StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
 					variableStringLiteralCheckParameter.setLiteralValue(svdMethod.getName().toString());
 					utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
@@ -1580,6 +1643,12 @@ public class Particionador extends AbstractHandler {
 					
 					invocationMethod.arguments().add(castArgument);
 				}
+				
+				// "token gerado" e Utils.checkToken(data.get('restToken'),tokenGerado)
+				StringLiteral generatedTokenArgumentCheckToken = tdResource.getAST().newStringLiteral();
+				generatedTokenArgumentCheckToken.setLiteralValue(tokenGeradoTipoParametros.toString());
+				utilsCheckTokenInvocation.arguments().add(castDataGetInvocationToken);
+				utilsCheckTokenInvocation.arguments().add(generatedTokenArgumentCheckToken);
 				
 				bodyNewMethodRestCall.statements().add(0, ifMethod);
 				
