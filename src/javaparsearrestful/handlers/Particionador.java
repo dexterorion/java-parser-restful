@@ -1018,21 +1018,280 @@ public class Particionador extends AbstractHandler {
 		createGetDomainFunctionSimpleType(clazz, type);
 		
 		// depois, cria as entradas respectivas para cada função
-//		createMethodsEntriesSimpleType(clazz, type);
-		createMethodsResourceSimpleType(clazz, type);
+//		createMethodsEntriesSimpleType(clazz, type); // cria um metodo para todos os com mesmo nome - TODO: FALTA ARRUMAR O TIPO DE RETORNO SER OBJECT, E CRIAR UM CHECKTYPES PARA CHECAR O TIPO DE CADA PARAMETRO
+		createMethodsResourceSimpleType(clazz, type); // cria um metodo para cada funcao, mesmo as com mesmo nome
 		
 		// por último, atualiza todos os imports
 		updateResourceImports(clazz, type);
 	}
 
 	/**
-	 * 
+	 * Cria um endpoint para cada funcao.
 	 * @param clazz
 	 * @param type
+	 * @throws BadLocationException 
+	 * @throws JavaModelException 
+	 * @throws MalformedTreeException 
 	 */
-	private void createMethodsResourceSimpleType(IType clazz, TypeDeclaration type) {
-		// TODO Auto-generated method stub
+	private void createMethodsResourceSimpleType(IType clazz, TypeDeclaration type) throws MalformedTreeException, JavaModelException, BadLocationException {
+		IType resourceDomain = resourcesJavaClasses.get(clazz);
 		
+		Document resourceDocument = getDocumentCompilationUnit(resourceDomain);
+		
+		CompilationUnit cuResource = getCompilationUnit(resourceDomain);
+		TypeDeclaration tdResource = getTypeDeclaration(cuResource);
+		
+		// recupera os métodos em um Map<String,List<MethodDeclaration>>
+		Map<String, List<MethodDeclaration>> mapMethods = findMethodsGroupedByNameNoPrivate(type);
+		
+		// verifica todos os metodos, para ir adicionando as chamadas, dentro da função
+		// levando em consideração parâmetros
+		
+		for(Entry<String, List<MethodDeclaration>> entry : mapMethods.entrySet()){
+			List<MethodDeclaration> methodsSameName = entry.getValue();
+			Integer countMethod = 0;
+			
+			for(MethodDeclaration method : methodsSameName){
+				// conta numero de vezes que o metodo existe, para criacao do endpoint e nome do metodo
+				countMethod++;
+				// são dois tipos de chamadas de método
+				// existem os métodos 'normais'
+				// existem os métodos 'static'
+				// a 'chamada' é muito parecida, muda somente se você vai usar um objeto objeto.nomeMetodo()
+				// para realizar a chamada, ou se você vai fazer a chama 'direto' Classe.nomeMetodo()
+				// é necessário verificar se terá um tipo de retorno ou não
+				// se tiver, dá um return, senão, não precisa
+				
+				//	@javax.ws.rs.Path("toString")
+				//	@javax.ws.rs.POST
+				//	@javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+				//	@javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+				//	public String restCallToString(Map<String, Object> data) throws Exception{
+				//		if(Utils.checkParameters(data, "restObjectBase", "properties", "name")){
+				//		   	// se for static
+				//			return Car.toString("properties", "name")
+				//			// se não for static
+				//			Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+				//			return car.toString("properties", "name");
+				//	    }
+				//				
+				//		if(Utils.checkParameters(data, "restObjectBase", "properties")){
+				//	        // se for static
+				//			return Car.toString("properties")
+				//			// se não for static
+				//			Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+				//			return car.toString("properties");
+				//	    }
+				//	    
+				//		throw new Exception("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+				//	}
+				
+				// adiciona o método newDomain
+				MethodDeclaration newMethodRestCall = tdResource.getAST().newMethodDeclaration();
+				// nome do método
+				newMethodRestCall.setName(tdResource.getAST().newSimpleName("restCall"+method.getName().toString()+countMethod.toString()));
+				
+				// adiciona os annotation
+				// @javax.ws.rs.Path("nomeChamada")
+				SingleMemberAnnotation annotationPath = tdResource.getAST().newSingleMemberAnnotation();
+				annotationPath.setTypeName(tdResource.getAST().newName("javax.ws.rs.Path"));
+				StringLiteral getSLPath = tdResource.getAST().newStringLiteral();
+				getSLPath.setLiteralValue(method.getName().toString()+countMethod.toString());
+				annotationPath.setValue(getSLPath);
+				newMethodRestCall.modifiers().add(0, annotationPath); 
+			    // @javax.ws.rs.POST
+				MarkerAnnotation annotationPost = tdResource.getAST().newMarkerAnnotation();
+				annotationPost.setTypeName(tdResource.getAST().newName("javax.ws.rs.POST"));
+				newMethodRestCall.modifiers().add(0, annotationPost);
+			    // @javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+				SingleMemberAnnotation annotationProduces = tdResource.getAST().newSingleMemberAnnotation();
+				annotationProduces.setTypeName(tdResource.getAST().newName("javax.ws.rs.Produces"));
+				Name nameAppJSONProduces = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+				annotationProduces.setValue(nameAppJSONProduces);
+				newMethodRestCall.modifiers().add(0, annotationProduces);
+			    // @javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+				SingleMemberAnnotation annotationConsumes = tdResource.getAST().newSingleMemberAnnotation();
+				annotationConsumes.setTypeName(tdResource.getAST().newName("javax.ws.rs.Consumes"));
+				Name nameAppJSONConsumes = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+				annotationConsumes.setValue(nameAppJSONConsumes);
+				newMethodRestCall.modifiers().add(0, annotationConsumes);
+				
+				// atualiza o typeParameter da função
+				for(TypeParameter tp : (List<TypeParameter>) method.typeParameters()){
+					newMethodRestCall.typeParameters().add((TypeParameter) ASTNode.copySubtree(tdResource.getAST(), tp));
+				}
+				
+				// flag do método
+				newMethodRestCall.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PUBLIC));
+				// tipo de retorno do método
+				newMethodRestCall.setReturnType2(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+				// parâmetro do método
+				// primeiro a declaração da variável
+				SingleVariableDeclaration mapParameter = tdResource.getAST().newSingleVariableDeclaration();
+				mapParameter.setName(tdResource.getAST().newSimpleName("data"));
+				// tipo parametrizado Map<String,Object>
+				ParameterizedType mapPT = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
+				mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
+				mapPT.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+				mapParameter.setType(mapPT);
+				newMethodRestCall.parameters().add(mapParameter);
+				// throw declaration na declaração
+				Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
+				newMethodRestCall.thrownExceptionTypes().add(throwException);
+				Type throwThrowable = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Throwable"));
+				newMethodRestCall.thrownExceptionTypes().add(throwThrowable);
+				// corpo
+				Block bodyNewMethodRestCall = tdResource.getAST().newBlock(); 
+				// seta o corpo na função
+				newMethodRestCall.setBody(bodyNewMethodRestCall);
+				// adiciona a função na classe
+				tdResource.bodyDeclarations().add(0, newMethodRestCall);
+				
+				// throw dentro do corpo
+				ThrowStatement throwNewException = tdResource.getAST().newThrowStatement();
+				ClassInstanceCreation cicThrowException = tdResource.getAST().newClassInstanceCreation();
+				StringLiteral argumentException = tdResource.getAST().newStringLiteral();
+				argumentException.setLiteralValue("Ocorreu um erro na requisição. Número e nome dos parâmetros é inválido");
+				cicThrowException.arguments().add(argumentException);
+				cicThrowException.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Exception")));
+				throwNewException.setExpression(cicThrowException);
+				// adiciona o throw no corpo
+				bodyNewMethodRestCall.statements().add(0, throwNewException);
+				
+				// inicia o if
+				IfStatement ifMethod = tdResource.getAST().newIfStatement();
+				
+				// chamada para Utils.checkParameters(data, "param1", "param2", ...)
+				MethodInvocation utilsCheckParametersInvocation = tdResource.getAST().newMethodInvocation();
+				utilsCheckParametersInvocation.setName(tdResource.getAST().newSimpleName("checkParameters"));
+				utilsCheckParametersInvocation.setExpression(tdResource.getAST().newName("main.java.utils.Utils"));
+				// checkParameters(data..)
+				SimpleName dataArgument = tdResource.getAST().newSimpleName("data");
+				utilsCheckParametersInvocation.arguments().add(dataArgument);
+				// checkParameters(data, "restObjectBase")
+				StringLiteral restObjectBaseArgument = tdResource.getAST().newStringLiteral();
+				restObjectBaseArgument.setLiteralValue("restObjectBase");
+				utilsCheckParametersInvocation.arguments().add(restObjectBaseArgument);
+				// comparação dentro do if
+				ifMethod.setExpression(utilsCheckParametersInvocation);
+				
+				MethodInvocation invocationMethod = tdResource.getAST().newMethodInvocation();
+				
+				Block ifBlock = tdResource.getAST().newBlock();
+				ifMethod.setThenStatement(ifBlock);
+				
+				// tem que verificar se tem retorno
+				if(method.getReturnType2().toString().contentEquals(org.eclipse.jdt.core.dom.PrimitiveType.VOID.toString())){
+					ifBlock.statements().add(tdResource.getAST().newExpressionStatement(invocationMethod));
+				}
+				else{
+					// return methodInvocation
+					ReturnStatement returnMethodInvocationRestObjectBase = tdResource.getAST().newReturnStatement();
+					returnMethodInvocationRestObjectBase.setExpression(invocationMethod);
+					ifBlock.statements().add(returnMethodInvocationRestObjectBase);
+				}
+				
+				// // se for static
+				// return Car.toString("properties", "name")
+				if(Modifier.isStatic(method.getModifiers())){
+					// Car.toString(...)
+					// toString(...)
+					invocationMethod.setName(tdResource.getAST().newSimpleName(method.getName().toString()));
+					// Car.
+					invocationMethod.setExpression(tdResource.getAST().newSimpleName(clazz.getElementName()));
+				}
+				// // se não for static
+				// Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+				// return car.toString("properties", "name");
+				else{
+					// newCar((Map<String, Object>)data.get("restObjectBase"))
+					// data.get('restObjectBase')
+					// restObjectBase
+					StringLiteral variableStringLiteralRestObjectBase = tdResource.getAST().newStringLiteral();
+					variableStringLiteralRestObjectBase.setLiteralValue("restObjectBase");
+					// data.get
+					MethodInvocation dataGetInvocRestObjectBase = tdResource.getAST().newMethodInvocation();
+					dataGetInvocRestObjectBase.setName(tdResource.getAST().newSimpleName("get"));
+					dataGetInvocRestObjectBase.setExpression(tdResource.getAST().newName("data"));
+					dataGetInvocRestObjectBase.arguments().add(variableStringLiteralRestObjectBase);
+					
+					// (Map<String, Object>)data.get("restObjectBase")
+					// tipo parametrizado Map<String,Object>
+					ParameterizedType ptRestObjectBase = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
+					ptRestObjectBase.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
+					ptRestObjectBase.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
+					// (Map<String, Object>)data.get("restObjectBase")
+					CastExpression castArgument = tdResource.getAST().newCastExpression();
+					castArgument.setType(ptRestObjectBase);
+					castArgument.setExpression(dataGetInvocRestObjectBase);
+					
+					// newCar(..)
+					MethodInvocation newDomainMethodInvocationRestObjectBase = tdResource.getAST().newMethodInvocation();
+					newDomainMethodInvocationRestObjectBase.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
+					// newCar((Map<String, Object>)data.get("restObjectBase"))
+					newDomainMethodInvocationRestObjectBase.arguments().add(castArgument);
+					
+					// Car car ...
+					// car
+					VariableDeclarationFragment vdfObj = tdResource.getAST().newVariableDeclarationFragment();
+					vdfObj.setName(tdResource.getAST().newSimpleName("obj"));
+					vdfObj.setInitializer(newDomainMethodInvocationRestObjectBase);
+					// Car car = newCar((Map<String, Object>)data.get("restObjectBase"))
+					VariableDeclarationStatement vdsObj = tdResource.getAST().newVariableDeclarationStatement(vdfObj);
+					vdsObj.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+					
+					// adicionando no corpo do if
+					ifBlock.statements().add(0, vdsObj);
+					
+					// car.toString(...)
+					// toString(...)
+					invocationMethod.setName(tdResource.getAST().newSimpleName(method.getName().toString()));
+					// car.
+					invocationMethod.setExpression(tdResource.getAST().newSimpleName("obj"));
+				}
+				
+				// itera pelos parâmetros para adicionar nos argumentos
+				for(SingleVariableDeclaration svdMethod : (List<SingleVariableDeclaration>)method.parameters()){
+					StringLiteral variableStringLiteralCheckParameter = tdResource.getAST().newStringLiteral();
+					variableStringLiteralCheckParameter.setLiteralValue(svdMethod.getName().toString());
+					utilsCheckParametersInvocation.arguments().add(variableStringLiteralCheckParameter);
+					
+					// data.get('arg')
+					// arg
+					StringLiteral variableStringLiteralReturn = tdResource.getAST().newStringLiteral();
+					variableStringLiteralReturn.setLiteralValue(svdMethod.getName().toString());
+					// data.get
+					MethodInvocation dataGetInvoc = tdResource.getAST().newMethodInvocation();
+					dataGetInvoc.setName(tdResource.getAST().newSimpleName("get"));
+					dataGetInvoc.setExpression(tdResource.getAST().newName("data"));
+					dataGetInvoc.arguments().add(variableStringLiteralReturn);
+					
+					// (Type)data.get('arg')
+					Type returnTypeArg;
+					if(svdMethod.getExtraDimensions() > 0){
+						Type typeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdMethod.getType());
+						ArrayType arrayReturnTypeArg = tdResource.getAST().newArrayType(typeArg, svdMethod.getExtraDimensions());
+						returnTypeArg = arrayReturnTypeArg;
+					}
+					else{
+						returnTypeArg = (Type) ASTNode.copySubtree(tdResource.getAST(), svdMethod.getType());
+					}
+					
+					CastExpression castArgument = tdResource.getAST().newCastExpression();
+					castArgument.setType(returnTypeArg);
+					castArgument.setExpression(dataGetInvoc);
+					
+					invocationMethod.arguments().add(castArgument);
+				}
+				
+				bodyNewMethodRestCall.statements().add(0, ifMethod);
+				
+				
+			}
+		}
+					
+		// salva as alterações realizadas na classe
+		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
 	}
 
 	/**
@@ -1105,8 +1364,8 @@ public class Particionador extends AbstractHandler {
 			
 			// flag do método
 			newMethodRestCall.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PUBLIC));
-			// tipo de retorno do método
-			newMethodRestCall.setReturnType2((Type) ASTNode.copySubtree(tdResource.getAST(), methodsSameName.get(0).getReturnType2()));
+			// tipo de retorno do método - Object
+			newMethodRestCall.setReturnType2(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
 			// parâmetro do método
 			// primeiro a declaração da variável
 			SingleVariableDeclaration mapParameter = tdResource.getAST().newSingleVariableDeclaration();
@@ -1120,6 +1379,8 @@ public class Particionador extends AbstractHandler {
 			// throw declaration na declaração
 			Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
 			newMethodRestCall.thrownExceptionTypes().add(throwException);
+			Type throwThrowable = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Throwable"));
+			newMethodRestCall.thrownExceptionTypes().add(throwThrowable);
 			// corpo
 			Block bodyNewMethodRestCall = tdResource.getAST().newBlock(); 
 			// seta o corpo na função
@@ -1344,6 +1605,8 @@ public class Particionador extends AbstractHandler {
 		// throw declaration na declaração
 		Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
 		getDomainMethod.thrownExceptionTypes().add(throwException);
+		Type throwThrowable = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Throwable"));
+		getDomainMethod.thrownExceptionTypes().add(throwThrowable);
 		// corpo
 		Block bodyGetDomainMethod = tdResource.getAST().newBlock(); 
 		// seta o corpo na função
@@ -1463,6 +1726,8 @@ public class Particionador extends AbstractHandler {
 		// throw declaration na declaração
 		Type throwException = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Exception"));
 		newDomainMethod.thrownExceptionTypes().add(throwException);
+		Type throwThrowable = tdResource.getAST().newSimpleType(tdResource.getAST().newSimpleName("Throwable"));
+		newDomainMethod.thrownExceptionTypes().add(throwThrowable);
 		// corpo
 		Block bodyNewDomainMethod = tdResource.getAST().newBlock(); 
 		// seta o corpo na função
