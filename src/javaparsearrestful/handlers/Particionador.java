@@ -39,6 +39,7 @@ import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.CastExpression;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.FieldAccess;
 import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.InfixExpression;
@@ -49,6 +50,7 @@ import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.Name;
 import org.eclipse.jdt.core.dom.ParameterizedType;
+import org.eclipse.jdt.core.dom.QualifiedName;
 import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SingleMemberAnnotation;
@@ -57,6 +59,7 @@ import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.ThrowStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
+import org.eclipse.jdt.core.dom.TypeLiteral;
 import org.eclipse.jdt.core.dom.TypeParameter;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
@@ -306,11 +309,12 @@ public class Particionador extends AbstractHandler {
 		resourceBuilder.append("package "+clazz.getPackageFragment().getElementName()+";\n");
 		resourceBuilder.append("\n");
 		resourceBuilder.append("import java.util.Map;\n");
-		resourceBuilder.append("\n");
+		resourceBuilder.append("import com.google.gson.Gson;\n");
 		resourceBuilder.append("import "+clazz.getFullyQualifiedName()+";\n");
 		resourceBuilder.append("\n");
 		resourceBuilder.append("@javax.ws.rs.Path(\"/"+clazz.getElementName()+"\")\n");
 		resourceBuilder.append("public class "+clazz.getElementName()+"Resource {\n");
+		resourceBuilder.append("	private static final Gson MAPPER = new Gson();\n");
 		resourceBuilder.append("}\n");
 		return resourceBuilder.toString();
 	}
@@ -960,13 +964,10 @@ public class Particionador extends AbstractHandler {
 	 * @throws MalformedTreeException 
 	 */
 	private void updateSimpleType(TypeDeclaration type, IType clazz) throws MalformedTreeException, JavaModelException, BadLocationException{
-		// Atualiza os construtores com parâmetros, adicionando as anotações necessárias
-//		updateConstructor(type);
-		// Atualiza as funções, adicionando @JsonIgnore para que não ocorra problemas de getNomeDeCampo
-		
 		// atualiza resource respectivo para a classe
 		updateResourceSimpleType(type, clazz);
-		
+
+		// Atualiza as funções, adicionando @JsonIgnore para que não ocorra problemas de getNomeDeCampo
 		updateMethods(type);
 	}
 	
@@ -1068,12 +1069,8 @@ public class Particionador extends AbstractHandler {
 		// para retorno específico
 		createNewDomainFunctionSimpleType(clazz, type);
 		
-		// depois, cria a função get
-		createGetDomainFunctionSimpleType(clazz, type);
-		
 		// depois, cria as entradas respectivas para cada função
 		createMethodsEntriesSimpleType(clazz, type); // cria um metodo para todos os com mesmo nome - TODO: FALTA ARRUMAR O TIPO DE RETORNO SER OBJECT, E CRIAR UM CHECKTYPES PARA CHECAR O TIPO DE CADA PARAMETRO
-//		createMethodsResourceSimpleType(clazz, type); // cria um metodo para cada funcao, mesmo as com mesmo nome
 		
 		// por último, atualiza todos os imports
 		updateResourceImports(clazz, type);
@@ -1557,41 +1554,47 @@ public class Particionador extends AbstractHandler {
 					invocationMethod.setExpression(tdResource.getAST().newSimpleName(clazz.getElementName()));
 				}
 				// // se não for static
-				// Car car = newCar((Map<String, Object>)data.get("restObjectBase"));
+				// Car car =  MAPPER.fromJson(MAPPER.toJsonTree(data.get("restObjectBase")), Car.class);
 				// return car.toString("properties", "name");
 				else{
-					// newCar((Map<String, Object>)data.get("restObjectBase"))
+					//  MAPPER.fromJson(MAPPER.toJsonTree(data.get("restObjectBase")), Car.class);
+
 					// data.get('restObjectBase')
 					// restObjectBase
 					StringLiteral variableStringLiteralRestObjectBase = tdResource.getAST().newStringLiteral();
 					variableStringLiteralRestObjectBase.setLiteralValue("restObjectBase");
-					// data.get
+					// data.get("restObjectBase")
 					MethodInvocation dataGetInvocRestObjectBase = tdResource.getAST().newMethodInvocation();
 					dataGetInvocRestObjectBase.setName(tdResource.getAST().newSimpleName("get"));
 					dataGetInvocRestObjectBase.setExpression(tdResource.getAST().newName("data"));
 					dataGetInvocRestObjectBase.arguments().add(variableStringLiteralRestObjectBase);
 					
-					// (Map<String, Object>)data.get("restObjectBase")
-					// tipo parametrizado Map<String,Object>
-					ParameterizedType ptRestObjectBase = tdResource.getAST().newParameterizedType(tdResource.getAST().newSimpleType(tdResource.getAST().newName("java.util.Map")));
-					ptRestObjectBase.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("String")));
-					ptRestObjectBase.typeArguments().add(tdResource.getAST().newSimpleType(tdResource.getAST().newName("Object")));
-					// (Map<String, Object>)data.get("restObjectBase")
-					CastExpression castArgument = tdResource.getAST().newCastExpression();
-					castArgument.setType(ptRestObjectBase);
-					castArgument.setExpression(dataGetInvocRestObjectBase);
+					// MAPPER.toJsonTree(..)
+					MethodInvocation mapperToJsonTreeInvoc = tdResource.getAST().newMethodInvocation();
+					mapperToJsonTreeInvoc.setName(tdResource.getAST().newSimpleName("toJsonTree"));
+					mapperToJsonTreeInvoc.setExpression(tdResource.getAST().newName("MAPPER"));
 					
-					// newCar(..)
-					MethodInvocation newDomainMethodInvocationRestObjectBase = tdResource.getAST().newMethodInvocation();
-					newDomainMethodInvocationRestObjectBase.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
-					// newCar((Map<String, Object>)data.get("restObjectBase"))
-					newDomainMethodInvocationRestObjectBase.arguments().add(castArgument);
+					// MAPPER.toJsonTree(data.get("restObjectBase"))
+					mapperToJsonTreeInvoc.arguments().add(dataGetInvocRestObjectBase);
+					
+					// Car.class
+					TypeLiteral domainClassType = tdResource.getAST().newTypeLiteral();
+					domainClassType.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
+					
+					// MAPPER.fromJson(...)
+					MethodInvocation mapperFromJsonInvoc = tdResource.getAST().newMethodInvocation();
+					mapperFromJsonInvoc.setName(tdResource.getAST().newSimpleName("fromJson"));
+					mapperFromJsonInvoc.setExpression(tdResource.getAST().newName("MAPPER"));
+					
+					//  MAPPER.fromJson(MAPPER.toJsonTree(data.get("restObjectBase")), Car.class);
+					mapperFromJsonInvoc.arguments().add(mapperToJsonTreeInvoc);
+					mapperFromJsonInvoc.arguments().add(domainClassType);
 					
 					// Car car ...
 					// car
 					VariableDeclarationFragment vdfObj = tdResource.getAST().newVariableDeclarationFragment();
 					vdfObj.setName(tdResource.getAST().newSimpleName("obj"));
-					vdfObj.setInitializer(newDomainMethodInvocationRestObjectBase);
+					vdfObj.setInitializer(mapperFromJsonInvoc);
 					// Car car = newCar((Map<String, Object>)data.get("restObjectBase"))
 					VariableDeclarationStatement vdsObj = tdResource.getAST().newVariableDeclarationStatement(vdfObj);
 					vdsObj.setType(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
@@ -1752,11 +1755,11 @@ public class Particionador extends AbstractHandler {
 		bodyGetDomainMethod.statements().add(returnNewDomain);
 		
 		// adiciona os annotation
-		// @javax.ws.rs.Path("get")
+		// @javax.ws.rs.Path("newDomain")
 		SingleMemberAnnotation annotationPath = tdResource.getAST().newSingleMemberAnnotation();
 		annotationPath.setTypeName(tdResource.getAST().newName("javax.ws.rs.Path"));
 		StringLiteral getSLPath = tdResource.getAST().newStringLiteral();
-		getSLPath.setLiteralValue("get");
+		getSLPath.setLiteralValue("newDomain");
 		annotationPath.setValue(getSLPath);
 		getDomainMethod.modifiers().add(0, annotationPath); 
 	    // @javax.ws.rs.POST
@@ -1833,7 +1836,7 @@ public class Particionador extends AbstractHandler {
 		// nome do método
 		newDomainMethod.setName(tdResource.getAST().newSimpleName("new"+clazz.getElementName()));
 		// flag do método
-		newDomainMethod.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PRIVATE));
+		newDomainMethod.modifiers().addAll(tdResource.getAST().newModifiers(Modifier.PUBLIC));
 		// tipo de retorno do método
 		newDomainMethod.setReturnType2(tdResource.getAST().newSimpleType(tdResource.getAST().newName(clazz.getElementName())));
 		// parâmetro do método
@@ -1980,6 +1983,30 @@ public class Particionador extends AbstractHandler {
 			}
 		}
 		
+		// adiciona os annotation
+		// @javax.ws.rs.Path("newDomain")
+		SingleMemberAnnotation annotationPath = tdResource.getAST().newSingleMemberAnnotation();
+		annotationPath.setTypeName(tdResource.getAST().newName("javax.ws.rs.Path"));
+		StringLiteral getSLPath = tdResource.getAST().newStringLiteral();
+		getSLPath.setLiteralValue("newDomain");
+		annotationPath.setValue(getSLPath);
+		newDomainMethod.modifiers().add(0, annotationPath); 
+	    // @javax.ws.rs.POST
+		MarkerAnnotation annotationPost = tdResource.getAST().newMarkerAnnotation();
+		annotationPost.setTypeName(tdResource.getAST().newName("javax.ws.rs.POST"));
+		newDomainMethod.modifiers().add(0, annotationPost);
+	    // @javax.ws.rs.Produces({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+		SingleMemberAnnotation annotationProduces = tdResource.getAST().newSingleMemberAnnotation();
+		annotationProduces.setTypeName(tdResource.getAST().newName("javax.ws.rs.Produces"));
+		Name nameAppJSONProduces = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+		annotationProduces.setValue(nameAppJSONProduces);
+		newDomainMethod.modifiers().add(0, annotationProduces);
+	    // @javax.ws.rs.Consumes({javax.ws.rs.core.MediaType.APPLICATION_JSON})  //add MediaType.APPLICATION_XML if you want XML as well (don't forget @XmlRootElement)
+		SingleMemberAnnotation annotationConsumes = tdResource.getAST().newSingleMemberAnnotation();
+		annotationConsumes.setTypeName(tdResource.getAST().newName("javax.ws.rs.Consumes"));
+		Name nameAppJSONConsumes = tdResource.getAST().newName("javax.ws.rs.core.MediaType.APPLICATION_JSON");
+		annotationConsumes.setValue(nameAppJSONConsumes);
+		newDomainMethod.modifiers().add(0, annotationConsumes);
 		
 		// salva as alterações realizadas na classe
 		saveUpdatesCompilationUnit(cuResource, resourceDomain, resourceDocument);
