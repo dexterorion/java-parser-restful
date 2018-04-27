@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,14 @@ import org.eclipse.text.edits.TextEdit;
  * @see org.eclipse.core.commands.AbstractHandler
  */
 public class Particionador extends AbstractHandler {
+	// todas as classes
+	private List<IType> javaAllClasses;
+	// todos os nomes completos das classes
+	private Map<String,IType> allClassesNames;
+	// todas as interfaces
+	private List<IType> javaAllInterfaces;
+	// todas as classes que podem ser utilizadas para criação dos endpoint
+	private List<IType> javaClassesEndpoints;
 	// classes que não extendem nenhuma classe e nem implementam interfaces e são abstratas
 	private List<IType> javaClassesAbstract;
 	// classes que extendem alguma classe, mas não implementam interfaces e são abstratas
@@ -96,6 +105,8 @@ public class Particionador extends AbstractHandler {
 	private Map<IType,IType> resourcesJavaClasses;
 	// nome do projeto
 	private String projectName;
+	// classes a serem processadas
+	private List<String> toProcess;
 	/**
 	 * The constructor.
 	 */
@@ -168,6 +179,21 @@ public class Particionador extends AbstractHandler {
 			System.out.println(".....");
 			System.out.println("......");
 			
+			System.out.println("Agora, escolha as classes que deseja exportar, separadas por vírgula");
+			System.out.println("");
+			
+			toProcess = new ArrayList<String>();
+			line = in.nextLine();
+			toProcess.addAll(Arrays.asList(line.split(",")));
+			
+			
+			for(String toProcessName : toProcess){
+				if(allClassesNames.get(toProcessName) == null){
+					System.out.println("Não existe classe escolhida... terminando");
+		            return null;
+				}
+			}
+			
 			System.out.println("Criando os resource e manager base das classes que não extendem ou implementam classes ou interfaces!");
 			System.out.println(".");
 			System.out.println("..");
@@ -179,6 +205,12 @@ public class Particionador extends AbstractHandler {
 			createResourceSimpleType(javaProject);
 			// cria os manager das classes que não extendem outra classe e não implementam interfaces
 			createManagerSimpleType(javaProject);
+			// cria o provider
+			createRestfulProvider(restfulProject);
+			// cria o application config
+			createApplicationConfig(restfulProject);
+			// cria o MixIn
+			createMixIn(restfulProject);
 			System.out.println("Processamento finalizado!");
 			System.out.println(".");
 			System.out.println("..");
@@ -212,13 +244,119 @@ public class Particionador extends AbstractHandler {
 		return null;
 	}
 	
+	private void createMixIn(IProject newProject) throws CoreException {
+		IFolder srcFolder = newProject.getFolder("src");
+		if(!srcFolder.exists())
+			srcFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder mainFolder = srcFolder.getFolder("main");
+		if(!mainFolder.exists())
+			mainFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder javaFolder = mainFolder.getFolder("java");
+		if(!javaFolder.exists())
+			javaFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder providerFolder = javaFolder.getFolder("provider");
+		if(!providerFolder.exists())
+			providerFolder.create(IFolder.FORCE, true, null);
+		
+		IFile mixIx = providerFolder.getFile("MixIn.java");
+		String mixIxString = new String();
+		mixIxString = generateMixInString();
+		InputStream mixIxIS = new ByteArrayInputStream(mixIxString.getBytes());
+		mixIx.create(mixIxIS, IFile.FORCE, null);
+		
+	}
+	
+	private String generateMixInString() {
+		StringBuilder mixInString = new StringBuilder();
+		mixInString.append("package main.java.provider;\n");
+		mixInString.append("\n");
+		mixInString.append("import com.fasterxml.jackson.annotation.JsonIdentityInfo;\n");
+		mixInString.append("import com.fasterxml.jackson.annotation.ObjectIdGenerators;\n");
+		mixInString.append("\n");
+		mixInString.append("@JsonIdentityInfo(generator=ObjectIdGenerators.IntSequenceGenerator.class, property=\"@id\")\n");
+		mixInString.append("public abstract class MixIn{\n");
+		mixInString.append("}\n");
+		return mixInString.toString();
+	}
+
+	private void createApplicationConfig(IProject newProject) throws CoreException {
+		IFolder srcFolder = newProject.getFolder("src");
+		if(!srcFolder.exists())
+			srcFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder mainFolder = srcFolder.getFolder("main");
+		if(!mainFolder.exists())
+			mainFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder javaFolder = mainFolder.getFolder("java");
+		if(!javaFolder.exists())
+			javaFolder.create(IFolder.FORCE, true, null);
+		
+		IFolder providerFolder = javaFolder.getFolder("provider");
+		if(!providerFolder.exists())
+			providerFolder.create(IFolder.FORCE, true, null);
+		
+		IFile appConfig = providerFolder.getFile("ApplicationConfig.java");
+		String appConfigString = new String();
+		appConfigString = generateAppConfigString();
+		InputStream appConfigIS = new ByteArrayInputStream(appConfigString.getBytes());
+		appConfig.create(appConfigIS, IFile.FORCE, null);
+		
+	}
+
+	private String generateAppConfigString() {
+		StringBuilder appConfigString = new StringBuilder();
+		appConfigString.append("package main.java.provider;\n");
+		appConfigString.append("\n");
+		appConfigString.append("import java.util.Collections;\n");
+		appConfigString.append("import java.util.HashMap;\n");
+		appConfigString.append("import java.util.Map;\n");
+		appConfigString.append("import java.util.Set;\n");
+		appConfigString.append("\n");
+		appConfigString.append("import javax.ws.rs.ApplicationPath;\n");
+		appConfigString.append("import javax.ws.rs.core.Application;\n");
+		appConfigString.append("\n");
+		appConfigString.append("@ApplicationPath(\"/service\")\n");
+		appConfigString.append("public class ApplicationConfig extends Application {\n");
+		appConfigString.append("\n");
+		appConfigString.append("	@Override\n");
+		appConfigString.append("	public Set<Class<?>> getClasses() {\n");
+		appConfigString.append("		Set<Class<?>> resources = new java.util.HashSet<>();\n");
+		appConfigString.append("		resources.add(main.java.provider.RestfulJacksonJsonProvider.class);\n");
+		for(String toProcessResource : toProcess){
+			appConfigString.append("		resources.add("+toProcessResource+"Resource.class);\n");	
+		}
+		appConfigString.append("		return resources;\n");
+		appConfigString.append("	}\n");
+		appConfigString.append("\n");
+		appConfigString.append("	@Override\n");
+		appConfigString.append("	public Set<Object> getSingletons() {\n");
+		appConfigString.append("		return Collections.emptySet();\n");
+		appConfigString.append("	}\n");
+		appConfigString.append("\n");
+		appConfigString.append("	@Override\n");
+		appConfigString.append("	public Map<String, Object> getProperties() {\n");
+		appConfigString.append("		Map<String, Object> properties = new HashMap<>();\n");
+		appConfigString.append("		properties.put(\"jersey.config.server.wadl.disableWadl\", true);\n");
+		appConfigString.append("		return properties;\n");
+		appConfigString.append("	}\n");
+		appConfigString.append("}\n");
+		
+		return appConfigString.toString();
+	}
+
 	/**
 	 * Cria os arquivos de manager base, linkados com os arquivos das Domain
 	 * @param javaProject
 	 * @throws CoreException 
 	 */
 	private void createManagerSimpleType(IJavaProject javaProject) throws CoreException {
-		for(IType clazz : javaClasses){
+		for(String toProcessName : toProcess){
+			IType clazz = allClassesNames.get(toProcessName);
+		
 			// salva um link entre a classe e o resource
 			managersJavaClasses.put(clazz, createManagerJava(javaProject, clazz, clazz.getElementName()));
 		}
@@ -353,7 +491,9 @@ public class Particionador extends AbstractHandler {
 	 * @throws CoreException 
 	 */
 	private void createResourceSimpleType(IJavaProject javaProject) throws CoreException {
-		for(IType clazz : javaClasses){
+		for(String toProcessName : toProcess){
+			IType clazz = allClassesNames.get(toProcessName);
+			
 			// salva um link entre a classe e o resource
 			resourcesJavaClasses.put(clazz, createResourceJava(javaProject, clazz, clazz.getElementName()));
 		}
@@ -400,6 +540,10 @@ public class Particionador extends AbstractHandler {
 	 * @throws CoreException 
 	 */
 	private void initializeGlobalVariable(IJavaProject javaProject) throws CoreException {
+		javaClassesEndpoints = new ArrayList<IType>();
+		allClassesNames = new HashMap<String,IType>();
+		javaAllClasses = new ArrayList<IType>();
+		javaAllInterfaces = new ArrayList<IType>();
 		javaClasses = new ArrayList<IType>();
 		javaChildrenClasses = new ArrayList<IType>();
 		javaClassesInterfaces = new ArrayList<IType>();
@@ -415,8 +559,95 @@ public class Particionador extends AbstractHandler {
 		
 		// itera sobre os pacotes e arquivos, para inicializar as variáveis contendo as classes java e interfaces do projeto
 		iterateJavaFiles(javaProject);
+		
+		// todas as classes
+		javaAllClasses.addAll(javaClasses);
+		javaAllClasses.addAll(javaChildrenClasses);
+		javaAllClasses.addAll(javaClassesAbstract);
+		javaAllClasses.addAll(javaChildrenClassesAbstract);
+		javaAllClasses.addAll(javaClassesInterfaces);
+		javaAllClasses.addAll(javaChildrenClassesInterfaces);
+		
+		// todas as interfaces
+		javaAllInterfaces.addAll(javaInterfaces);
+		javaAllInterfaces.addAll(javaChildrenInterfaces);
+		
+//		// verifica quais classes podem ser realmente utilizadas como classes para formarem endpoints
+//		initializeJavaClassesEndpoint();
 	}
 	
+//	/**
+//	 * Faz a verificação para quais classes pode ser criado um endpoint
+//	 * @throws JavaModelException 
+//	 */
+//	private void initializeJavaClassesEndpoint() throws JavaModelException {
+//		for(IType javaAllClasse : javaAllClasses){
+//			if(!findMasterParent(javaAllClasse)){
+//				javaClassesEndpoints.add(javaAllClasse);
+//			}
+//		}
+//		
+//		
+//		
+//		System.out.println(javaClassesEndpoints.size());
+//	}
+
+//	/**
+//	 * Verifica se classe pai está fora do projeto 
+//	 * @param javaAllClasse
+//	 * @return true caso contenha pai que não pertence ao projeto
+//	 */
+//	private Boolean findMasterParent(IType javaAllClasse) {
+//		ASTParser parserClasse = ASTParser.newParser(AST.JLS8);
+//		parserClasse.setResolveBindings(true);
+//		parserClasse.setKind(ASTParser.K_COMPILATION_UNIT);
+//		parserClasse.setSource(javaAllClasse.getCompilationUnit());
+//		CompilationUnit cuClasse = (CompilationUnit) parserClasse.createAST(null);
+//		cuClasse.recordModifications();
+//		TypeDeclaration tdClasse = (TypeDeclaration) cuClasse.types().get(0);
+//		
+//		return hasParentNoProject(tdClasse.resolveBinding());
+//	}
+//	
+//	/**
+//	 * Verifica se classe pertence ao projeto
+//	 * @param classe
+//	 * @return retorna true se classe partencer ao projeto e false, caso não
+//	 */
+//	public boolean belongsToProject(IType classe){
+//		return javaAllClasses.contains(classe);
+//	}
+//	
+//	/**
+//	 * Verifica se classe 
+//	 * @param typeBind
+//	 * @param javaClasses
+//	 * @param javaChildrenClasses
+//	 * @return retorna true se o pai (master) não pertencer ao projeto
+//	 */
+//	public boolean hasParentNoProject(ITypeBinding typeBind) {
+//		Boolean hasParentNoProject = false;
+//		findClasseHierarchyInHierarchy(typeBind, hasParentNoProject);
+//		return hasParentNoProject;
+//	}
+//
+//	/* find similar method signature in super class hierarchy */
+//	public void findClasseHierarchyInHierarchy(ITypeBinding typeBind, Boolean hasParentNoProject) {
+//		/* get super class */
+//	    ITypeBinding superTypeBind = typeBind.getSuperclass();
+//	    if(superTypeBind == null)
+//	         return;
+//
+//	    IType classe = (IType) superTypeBind.getJavaElement();
+//	    if(!belongsToProject(classe) && !classe.getElementName().contentEquals("Object")){
+//	    	hasParentNoProject = true;
+//	    	return;
+//	    }
+//	    else{
+//	    	findClasseHierarchyInHierarchy(superTypeBind, hasParentNoProject);
+//	    }	      
+//	}
+
 	/** 
 	 * Itera sobre os pacotes existentes no projeto, para atualizar as variáveis necessárias
 	 * @param javaProject
@@ -459,6 +690,7 @@ public class Particionador extends AbstractHandler {
 				Boolean implementsInterface = type.getSuperInterfaceNames().length == 0? false:true;
 				// se for classe 
 				if(type.isClass()){
+					allClassesNames.put(type.getFullyQualifiedName(),type);
 					// se extender classe
 					if(extendsClass){
 						// se implementa interface
@@ -551,11 +783,10 @@ public class Particionador extends AbstractHandler {
 		// cria o arquivo web.xml para o projeto
 		createWebXml(newProject);
 		
-		// cria o arquivo RestfulJacksonProvider.java
-		createRestfulProvider(newProject);
-		
 		// cria o arquivo Utils.java
 		createUtilJava(newProject);
+		
+		// cria o arquivo ApplicationConfig.java
 		
 		newProject.open(null);
 
@@ -673,11 +904,24 @@ public class Particionador extends AbstractHandler {
 		providerString.append("\n");
 		providerString.append("@Provider\n");
 		providerString.append("public class RestfulJacksonJsonProvider implements ContextResolver<ObjectMapper> {\n");
-		providerString.append("    private static final ObjectMapper MAPPER = new ObjectMapper();\n");
+		providerString.append("    private static ObjectMapper MAPPER = new ObjectMapper();\n");
 		providerString.append("\n");
 		providerString.append("    public RestfulJacksonJsonProvider() {\n");
-		providerString.append("    	MAPPER.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);\n");
-		providerString.append("        System.out.println(\"Instantiate RestfulJacksonJsonProvider\");");
+		providerString.append("			MAPPER.findAndRegisterModules();\n");
+		providerString.append("    		MAPPER.setVisibility(PropertyAccessor.FIELD, Visibility.ANY);\n");
+		providerString.append("			MAPPER.setVisibility(PropertyAccessor.GETTER, Visibility.NONE);\n");
+		providerString.append("			addMixInAllTypes();\n");
+		providerString.append("    		System.out.println(\"Instantiate RestfulJacksonJsonProvider\");");
+		providerString.append("    }\n");
+		providerString.append("\n");
+		providerString.append("    private void addMixInAllTypes(){\n");
+		for(String toProcessName : toProcess){
+			providerString.append("    		MAPPER.addMixIn("+toProcessName+".class,main.java.provider.MixIn.class);\n");
+		}
+		providerString.append("    }\n");
+		providerString.append("\n");
+		providerString.append("    public static ObjectMapper getMapper(){\n");
+		providerString.append("    		return MAPPER;\n");
 		providerString.append("    }\n");
 		providerString.append("\n");
 		providerString.append("    @Override\n");
@@ -774,7 +1018,7 @@ public class Particionador extends AbstractHandler {
 		pomString.append("		<version.jdk>1.8</version.jdk>  <!-- 1.7 for JDK 7 -->\n");
 		pomString.append("		<version.mvn.compiler>3.2</version.mvn.compiler>\n");
 		pomString.append("		<version.mvn.war.plugin>2.6</version.mvn.war.plugin>\n");
-		pomString.append("		<version.jersey>2.15</version.jersey>\n");
+		pomString.append("		<version.jersey>2.26</version.jersey>\n");
 		pomString.append("		<version.servlet.api>3.1.0</version.servlet.api>  <!-- use 3.0.1 for Tomcat 7 or Java EE 6 (i.e. Glassfish 3.x) -->\n");
 		pomString.append("	</properties>\n");
 		pomString.append("	<repositories>\n");
@@ -946,90 +1190,87 @@ public class Particionador extends AbstractHandler {
 	 * @throws MalformedTreeException 
 	 */
 	private void processSimpleType() throws JavaModelException, MalformedTreeException, BadLocationException{
-		for(IType type : javaClasses){
+		for(String toProcessName : toProcess){
+			IType type = allClassesNames.get(toProcessName);
+		
 			Document javaDocument = getDocumentCompilationUnit(type);
 			CompilationUnit cuClazz = getCompilationUnit(type);
 			TypeDeclaration tdClazz = getTypeDeclaration(cuClazz);
 			
 			// atualiza o simple type alterando as funções necessárias e criando manafger e resource
 			updateSimpleType(tdClazz, type);
-			
-			// Adiciona os imports necessários para a classe
-			List<String> imports = new ArrayList<String>();
-			imports.add("com.fasterxml.jackson.annotation.JsonIgnore");
-			addImportsToType(cuClazz, imports);
-			
+						
 			// salva as alterações realizadas na classe
 			saveUpdatesCompilationUnit(cuClazz, type, javaDocument);
 			
 		}
 	}
 	
-	/**
-	 * Adiciona uma lista de imports em um type
-	 * @param type
-	 * @param imports
-	 */
-	private void addImportsToType(CompilationUnit cuType, List<String> imports) {
-		for(String importType : imports){
-			ImportDeclaration impD = cuType.getAST().newImportDeclaration();
-			impD.setName(cuType.getAST().newName(importType));
-			cuType.imports().add(impD);
-		}
-	}
+//	/**
+//	 * Adiciona uma lista de imports em um type
+//	 * @param type
+//	 * @param imports
+//	 */
+//	private void addImportsToType(CompilationUnit cuType, List<String> imports) {
+//		for(String importType : imports){
+//			ImportDeclaration impD = cuType.getAST().newImportDeclaration();
+//			impD.setName(cuType.getAST().newName(importType));
+//			cuType.imports().add(impD);
+//		}
+//	}
 
-	/**
-	 * Imprime dados relativos às variáveis globais que foram criadas durante o desenvolvimento, para debug
-	 * @throws JavaModelException
-	 */
-	private void printGlobalVariableData() throws JavaModelException {
-		System.out.println("Quantidade de classes: "+(javaClasses.size()+javaChildrenClasses.size()+
-				javaChildrenClassesInterfaces.size()+javaClassesInterfaces.size()));
-		
-		System.out.println(".");
-		System.out.println("..");
-		System.out.println("...");
-		System.out.println("....");
-		System.out.println(".....");
-		System.out.println("......");
-		System.out.println("Classes que não extendem classe e não implementam interfaces: "+javaClasses.size());
-		for(IType type : javaClasses){
-			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);;
-		}
-		
-		System.out.println(".");
-		System.out.println("..");
-		System.out.println("...");
-		System.out.println("....");
-		System.out.println(".....");
-		System.out.println("......");
-		System.out.println("Classes que extendem classe e não implementam interfaces: "+javaChildrenClasses.size());
-		for(IType type : javaChildrenClasses){
-			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
-		}
-		
-		System.out.println(".");
-		System.out.println("..");
-		System.out.println("...");
-		System.out.println("....");
-		System.out.println(".....");
-		System.out.println("......");
-		System.out.println("Classes que não extendem classe e implementam interfaces: "+javaClassesInterfaces.size());
-		for(IType type : javaClassesInterfaces){
-			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
-		}
-		
-		System.out.println(".");
-		System.out.println("..");
-		System.out.println("...");
-		System.out.println("....");
-		System.out.println(".....");
-		System.out.println("......");
-		System.out.println("Classes que extendem classe e não implementam interfaces: "+javaChildrenClassesInterfaces.size());
-		for(IType type : javaChildrenClassesInterfaces){
-			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
-		}
-	}
+//	/**
+//	 * Imprime dados relativos às variáveis globais que foram criadas durante o desenvolvimento, para debug
+//	 * @throws JavaModelException
+//	 */
+//	private void printGlobalVariableData() throws JavaModelException {
+//		System.out.println("Quantidade de classes: "+(javaClasses.size()+javaChildrenClasses.size()+
+//				javaChildrenClassesInterfaces.size()+javaClassesInterfaces.size()));
+//		
+//		System.out.println(".");
+//		System.out.println("..");
+//		System.out.println("...");
+//		System.out.println("....");
+//		System.out.println(".....");
+//		System.out.println("......");
+//		System.out.println("Classes que não extendem classe e não implementam interfaces: "+javaClasses.size());
+//		for(IType type : javaClasses){
+//			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);;
+//		}
+//		
+//		System.out.println(".");
+//		System.out.println("..");
+//		System.out.println("...");
+//		System.out.println("....");
+//		System.out.println(".....");
+//		System.out.println("......");
+//		System.out.println("Classes que extendem classe e não implementam interfaces: "+javaChildrenClasses.size());
+//		for(IType type : javaChildrenClasses){
+//			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
+//		}
+//		
+//		System.out.println(".");
+//		System.out.println("..");
+//		System.out.println("...");
+//		System.out.println("....");
+//		System.out.println(".....");
+//		System.out.println("......");
+//		System.out.println("Classes que não extendem classe e implementam interfaces: "+javaClassesInterfaces.size());
+//		for(IType type : javaClassesInterfaces){
+//			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
+//		}
+//		
+//		System.out.println(".");
+//		System.out.println("..");
+//		System.out.println("...");
+//		System.out.println("....");
+//		System.out.println(".....");
+//		System.out.println("......");
+//		System.out.println("Classes que extendem classe e não implementam interfaces: "+javaChildrenClassesInterfaces.size());
+//		for(IType type : javaChildrenClassesInterfaces){
+//			System.out.println("Classe: "+type.getFullyQualifiedName()+", superClasse: "+type.getSuperclassName()+", interfaces: "+type.getSuperInterfaceNames().length);
+//		}
+//	}
 	
 	/**
 	 * Atualiza a classe simples. Setar: @JsonIgnore nas funções
@@ -1042,8 +1283,7 @@ public class Particionador extends AbstractHandler {
 		// atualiza resource respectivo para a classe
 		updateResourceSimpleType(type, clazz);
 
-		// Atualiza as funções, adicionando @JsonIgnore para que não ocorra problemas de getNomeDeCampo
-		updateMethods(type);
+		
 	}
 	
 	/** 
